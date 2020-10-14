@@ -857,6 +857,7 @@ install:
 	echo "特别声明：不要删除boot.img，如果删除了， 请到64位操作系统书中36页寻找复原方法"
 	dd if=$(BUILD_BIN_DIR)/boot.bin of=$(BUILD_DIR)/boot.img bs=512 count=1 conv=notrunc 
 	sudo mount $(BUILD_DIR)/boot.img /media/ -t vfat -o loop
+
 	sudo cp $(BUILD_BIN_DIR)/loader.bin /media
 	sync
 	sudo umount /media/
@@ -869,11 +870,22 @@ clean:
 
 
 
+执行结果：
 
+![image-20201014165851919](/home/wangsy/Code/os/docs/pics/lab1/image-20201014165851919.png)
 
 ### 总体回顾
 
 经过上面的学习，我们已经对boot有了一个比较全面的认知了，在这里我们再全面的梳理一下boot时发生的事件：
 
 - 首先，boot程序挂载在`0x7c00`的位置，在`0x7c00`前面的是bios例程，boot程序不需要我们手动操作，就会被自动执行，当然boot程序必须以`0xaa55`结尾，这样才能被系统识别，这是boot程序的一些基本属性。
-- 作为开机后执行的第一个程序，boot的大小被限制在512kb，显然，这是不够的，所以我们需要让boot
+- 作为开机后执行的第一个程序，boot的大小被限制在512kb，显然，这是不够的，所以我们需要让boot加载磁盘中其他扇区的程序。
+- 在boot最开始的时候，我们定义了一些宏定义变量，同时也将临时文件系统定义为了`FAT12`文件系统，为此我们db、dw了一系列的变量。
+- 随后，我们将基地址存储到了相应寄存器中，又通过`int 10h`的方法清空了屏幕，并且在屏幕上输出了`BootStarting`的提示语
+- 其后，我们开始加载loader，为此我们需要在**根目录区**搜索名为`LOADER BIN`的文件，如果没有找到，那么就报错
+- 如果找到了，那就调用预定义好的`Func_ReadOneSector`函数读取对应扇区，同时使用`Func_GetFATEntry`检索FAT表项
+- 读取完毕后，跳转到对应区域，执行loader中的内容
+- 我们的loader非常简易，就是直接输出了一段话而已，在下一节中我们会继续完善loader部分
+
+
+
