@@ -397,6 +397,483 @@ $$
 
 
 
-
-
 #### 软盘读取
+
+```assembly
+;======  从软盘中读取一个扇区
+
+Func_ReadOneSector:
+
+    push    bp 
+    mov bp, sp
+    sub esp, 2
+    mov byte    [bp - 2]. cl
+    div	bl
+	inc	ah
+	mov	cl,	ah
+	mov	dh,	al
+	shr	al,	1
+	mov	ch,	al
+	and	dh,	1
+	pop	bx
+	mov	dl,	[BS_DrvNum]
+Label_Go_On_Reading:
+	mov	ah,	2
+	mov	al,	byte	[bp - 2]
+	int	13h
+	jc	Label_Go_On_Reading
+	add	esp,	2
+	pop	bp
+	ret
+```
+
+
+
+##### 前导知识
+
+首先我们需要了解的是：`bp`,`sp`,`ss`,`esp`四个寄存器的作用：
+
+- SS:存放栈的段地址；
+
+- SP:堆栈寄存器SP(stack pointer)存放栈的偏移地址;
+
+  `SS + SP`就可以得到该堆栈栈顶元素的地址
+
+- BP: 基数指针寄存器BP(base pointer)是一个寄存器，它的用途有点特殊，是和堆栈指针SP联合使用的，作为SP校准使用的，只有在寻找堆栈里的数据和使用个别的寻址方式时候才能用到
+
+- SP：为栈指针，用于指向栈的栈顶（下一个压入栈的活动记录的顶部）
+
+
+
+这里的BP、SP都是16位的，如果需要三十二位的操作，那么就使用`EBP`以及`ESP`即可，`E`即extend。
+
+
+
+在上面的代码片段中，作者实际上是写了一个函数，作为一个函数，除了函数的主体部分外，他需要进行如下操作（下面内容来自nasm官方文档）：
+
+- `Step1`：调用者按照相反的顺序（从右向左），一个接一个的将函数的参数压入栈
+- `Step2`：调用者执行`CALL `指令，将控制权传递给被调用者
+- `Step3`：被调用方获得控制权，并且通常从将ESP的值保存在EBP中开始，以便能够将EBP作为基本指针来查找其堆栈上的参数。但是，调用方也可能也在执行此操作，因此调用约定的一部分规定，任何C函数都必须保留EBP。 因此，如果被调用方要将EBP设置为帧指针，则必须先推送前一个值。（如果觉得太抽象了也没关系，一会结合作者的代码理解一些就可以了）
+- `Step4`：被呼叫者然后可以访问其相对于EBP的参数。 [EBP]中的双字保留了被推入时EBP的先前值； 下一个双字[EBP + 4]保留返回地址，
+  由CALL隐式推送。 此后，参数从[EBP + 8]开始。 该函数的最左侧参数（自上次推送起）可以在距EBP的此偏移量处访问； 其他的则以相继更大的偏移量跟随。 因此，在诸如printf之类的函数中，该函数需要可变数量的参数，以相反顺序推入参数意味着该函数知道在哪里可以找到其第一个参数，从而告诉它其余参数的数量和类型。
+- `Step5`：被呼叫者如果希望将值返回给呼叫者，则应根据值的大小将其保留在AL，AX或EAX中。 浮点结果通常在ST0中返回。
+- `Step6`：被调用方完成处理后，如果已分配了本地堆栈空间，则从EBP中还原ESP，然后弹出先前的EBP值，并通过RET（等效于RETN）返回。
+- `Step7`：调用方从被调用方重新获得控制权时，功能参数仍在堆栈上，因此通常会向ESP添加立即数以将其删除（而不是执行许多慢速POP指令）。 因此，如果由于原型不匹配而意外地用错误数量的参数调用了函数，则堆栈将仍返回到明智的状态，这是因为知道调用了多少参数的调用者执行了删除操作。
+
+
+
+除此之外，我们还需要熟悉一下除法指令，除法指令：`div 寄存器`，这个指令中，没有显式的表示除数和被除数。被除数，默认的将被除数放在了AX或DX和AX中。如果除数是8位的寄存器，那么被除数被认为是AX，如果除数是16位那么被除数是DX和AX，我们可以看下下面的表格：
+
+<img src="C:\Users\wangsy\AppData\Roaming\Typora\typora-user-images\image-20201012070938611.png" alt="image-20201012070938611" style="zoom: 50%;" />
+
+就是在这里感觉，mips的设计实在是比`x86`人性化太多了。
+
+##### Func_ReadOneSector
+
+现在我们回到作者的程序，我们按照上面的流程来分析一下这个程序段：
+
+- 第一步：进入本程序段时，我们先将`bp`原来的值缓存到栈中，对应的语句是：`push bp`
+- 第二步：将sp的值赋给bp，sp是调用该函数前的堆栈寄存器的偏移值
+- 第三步：将`esp`的值减二，这里实际上是在更新栈的大小，因为前面压入栈的元素大小为2字节。
+- 第四步：后面就是函数的主体了，在主体中，会进行一系列的操作，在操作的时候，会以bp为基址进行寻址
+- 第五步：函数主题执行完毕后，会对栈进行还原，也就是：先将栈的大小进行还原：`add  esp,  2`
+- 第六步：对bp进行还原，同时也对栈进行出栈操作：`pop  bp`
+- 第七步：退出当前函数：`ret`
+
+
+
+
+
+到此为止，我们把汇编中的函数相关的部分，基本都看完了，接下来我们来看bootloader相关的部分：
+
+
+
+这里的`div bl`就是计算`AX / BL`，将商放到`AL`，余数放到`AH`。
+
+我们实质上是在调用一个中断方法来读取软盘相应扇区的，这个中断方法如下：
+
+INT 13h，AH=02h 功能：读取磁盘扇区。
+
+- AL=读入的扇区数（必须非0）；
+- CH=磁道号（柱面号）的低8位；
+- CL=扇区号1~63（bit 0~5），磁道号（柱面号）的高2位（bit 6~7, 只对硬盘有效）；
+- DH=磁头号；
+- DL=驱动器号（如果操作的是硬盘驱动器，bit 7必须被置位）；
+- ES:BX=>数据缓冲区。
+
+
+
+到此为止，我们也就发现了，这里就是对这个中断函数的一个封装而已，只需要将下面的参数放置到对应的寄存器中，就可以实现读取扇区的功能：
+
+- AX=待读取的磁盘起始扇区号；
+- CL=读入的扇区数量；
+- ES:BX=>目标缓冲区起始地址。
+
+
+
+同时，`inc`指令就是加1的意思，`jc`就是jump if carry，进位则跳转，和上一句操作有关。这里jc的含义就是，控制一直发生中断，直到正确读出为止。
+
+
+
+### 搜索出引导加载程序
+
+```assembly
+;=======   search loader.bin
+    mov    word    [SectorNo],    SectorNumOfRootDirStart
+
+Lable_Search_In_Root_Dir_Begin:
+
+    cmp    word    [RootDirSizeForLoop],    0
+    jz     Label_No_LoaderBin
+    dec    word    [RootDirSizeForLoop]
+    mov    ax,     00h
+    mov    es,     ax
+    mov    bx,     8000h
+    mov    ax,     [SectorNo]
+    mov    cl,     1
+    call   Func_ReadOneSector
+    mov    si,     LoaderFileName
+    mov    di,     8000h
+    cld
+    mov    dx,     10h; 将dx赋值为10h，循环控制变量
+
+Label_Search_For_LoaderBin:
+
+    cmp    dx,     0
+    jz     Label_Goto_Next_Sector_In_Root_Dir;循环十次
+    dec    dx
+    mov    cx,     11 ; 再循环十一次
+
+Label_Cmp_FileName:
+
+    cmp    cx,     0
+    jz     Label_FileName_Found
+    dec    cx
+    lodsb  ; 
+    cmp    al,     byte    [es:di]
+    jz     Label_Go_On
+    jmp    Label_Different
+
+Label_Go_On:
+
+    inc    di
+    jmp    Label_Cmp_FileName
+
+Label_Different:
+
+    and    di,     0ffe0h
+    add    di,     20h
+    mov    si,     LoaderFileName
+    jmp    Label_Search_For_LoaderBin
+
+Label_Goto_Next_Sector_In_Root_Dir:
+
+    add    word    [SectorNo],    1
+    jmp    Lable_Search_In_Root_Dir_Begin
+```
+
+
+
+这段代码完成的是从根目录中搜索出引导加载程序的任务，我们跟随代码，对这段程序进行简单的解读。
+
+
+
+- 首先，将根目录的起始扇区号存储在`[SectorNo]`中，从这个地方开始搜索。
+
+- 在这段代码前，还有一小段：`RootDirSizeForLoop dw RootDirSectors`，这里执行` cmp    word    [RootDirSizeForLoop],    0`
+
+  | CMP结果               | ZF   | CF   |
+  | --------------------- | ---- | ---- |
+  | 目的操作数 < 源操作数 | 0    | 1    |
+  | 目的操作数 > 源操作数 | 0    | 0    |
+  | 目的操作数 = 源操作数 | 1    | 0    |
+
+  比较`RootDirSectors`对应内存区域是否是0：
+
+  - 是0：ZF=1，CF=0
+  - 不是0，一定大于0：ZF=CF=0
+
+  反观这里的jz，就是如果ZF寄存器为1，那么就进行跳转，也就是说，如果根目录存储的文件数量为0，那么就跳转到`SectorNumOfRootDirStart`进行处理。
+
+- 对`[RootDirSizeForLoop]`对应的值减一（其实这个就是控制变量啦）
+
+  其实前面这些就相当于：`for(int [RootDirSizeForLoop] = [RootDirSectors]; [RootDirSizeForLoop] > 0; [[RootDirSizeForLoop]] -- )`，也就是循环体，接下来要看的是循环执行的具体内容
+
+- 调用读取扇区的功能：
+
+  - AX=待读取的磁盘起始扇区号，在这里是[SectorNo]；
+  - CL=读入的扇区数量，在这里是1；
+  - ES:BX=>目标缓冲区起始地址，此处是0000h:8000h。
+
+  对这些变量初始化完成后使用`Func_ReadOneSector`对相应功能完成调用，调用结束后，扇区内的内容被放置到目标缓冲区。
+
+- 将`si`置为 LoaderFileName，这里的`LoaderFileName`就是字符串`"LOADER BIN"`
+
+- 使用CLD指令，将DF设置为0，即告诉程序，后面的si，di向前移动
+
+- 嵌套了两重循环，循环内执行了`lodsb`指令：
+
+- 以下是Intel官方白皮书对`LODSB/LODSW/LODSD/LODSQ`指令的概括描述。
+
+  - 该命令可从DS:(R|E)SI寄存器指定的内存地址中读取数据到AL/AX/EAX/RAX寄存器。
+  - 当数据载入到AL/AX/EAX/RAX寄存器后，(R|E)SI寄存器将会依据`R|EFLAGS`标志寄存器的DF标志位自动增加或减少载入的数据长度（1/2/4/8字节）。当`DF=0`时，(R|E)SI寄存器将会自动增加；反之，(R|E)SI寄存器将会自动减少。
+
+- 在这里执行的操作就是：将对应的字符放入`AL`之中，然后再使用cmp语句进行比对，如果相同，就进入`Label_Go_On`，否则就进入`Label_Different`
+
+- 看`Label_Go_On`，执行的就是：
+
+  ```assembly
+  inc    di
+  jmp    Label_Cmp_FileName
+  ```
+
+  也就是先--，然后再开始循环比对，也就是说，这里执行的实际上就是按位比对字符串的工作。
+
+- `Label_Different`：
+
+  ```assembly
+   and    di,     0ffe0h
+   add    di,     20h
+   mov    si,     LoaderFileName
+   jmp    Label_Search_For_LoaderBin
+  ```
+
+  相当于break了本次读取到的字符，跳转到下一次。
+
+- 同理，如果在当前的Sector没找到，那么就找下一个`Label_Goto_Next_Sector_In_Root_Dir`
+
+
+
+总的来说，上面代码的作用就是找到Loader.bin 这个文件。
+
+
+
+### 错误提示
+
+当loader没有被找到的时候，会调用这段代码，来进行错误提示：
+
+```assembly
+;=======   display on screen : ERROR:No LOADER Found
+
+Label_No_LoaderBin:
+
+    mov    ax,    1301h
+    mov    bx,    008ch
+    mov    dx,    0100h
+    mov    cx,    21
+    push   ax
+    mov    ax,    ds
+    mov    es,    ax
+    pop    ax
+    mov    bp,    NoLoaderMessage
+    int    10h
+    jmp    $
+```
+
+
+
+这里就不多谈了，调用的是`int 10h`中断，负责输出一些信息。
+
+
+
+### FAT表项解析
+
+```assembly
+;=======   get FAT Entry
+
+Func_GetFATEntry:
+
+    push   es
+    push   bx
+    push   ax
+    mov    ax,    00
+    mov    es,    ax
+    pop    ax
+    mov    byte   [Odd],    0
+    mov    bx,    3
+    mul    bx
+    mov    bx,    2
+    div    bx
+    cmp    dx,    0
+    jz     Label_Even
+    mov    byte   [Odd],    1
+
+Label_Even:
+
+    xor    dx,    dx
+    mov    bx,    [BPB_BytesPerSec]
+    div    bx
+    push   dx
+    mov    bx,    8000h
+    add    ax,    SectorNumOfFAT1Start
+    mov    cl,    2
+    call   Func_ReadOneSector
+
+    pop    dx
+    add    bx,    dx
+    mov    ax,    [es:bx]
+    cmp    byte   [Odd],    1
+    jnz    Label_Even_2
+    shr    ax,    4
+
+Label_Even_2:
+    and    ax,    0fffh
+    pop    bx
+    pop    es
+    ret
+```
+
+
+
+Func_GetFATEntry是一个函数，可以通过当前表项索引出下一个表项，调用它需要给出一个参数：
+
+- AX=FAT表项号（输入参数/输出参数）。
+
+这段程序首先会保存FAT表项号，并将奇偶标志变量（变量`[odd]`）置0。因为每个FAT表项占1.5 B，所以将FAT表项乘以3除以2（扩大1.5倍），来判读余数的奇偶性并保存在`[odd]`中（奇数为1，偶数为0），再将计算结果除以每扇区字节数，商值为FAT表项的偏移扇区号，余数值为FAT表项在扇区中的偏移位置。接着，通过`Func_ReadOneSector`模块连续读入两个扇区的数据，此举的目的是为了解决FAT表项横跨两个扇区的问题。最后，根据奇偶标志变量进一步处理奇偶项错位问题，即奇数项向右移动4位。
+
+
+
+```assembly
+;=======   found loader.bin name in root director struct
+
+Label_FileName_Found:
+
+    mov    ax,    RootDirSectors
+    and    di,    0ffe0h
+    add    di,    01ah
+    mov    cx,    word    [es:di]
+    push   cx
+    add    cx,    ax
+    add    cx,    SectorBalance
+    mov    ax,    BaseOfLoader
+    mov    es,    ax
+    mov    bx,    OffsetOfLoader
+    mov    ax,    cx
+
+Label_Go_On_Loading_File:
+    push   ax
+    push   bx
+    mov    ah,    0eh
+    mov    al,    '.'
+    mov    bl,    0fh
+    int    10h
+    pop    bx
+    pop    ax
+
+    mov    cl,    1
+    call   Func_ReadOneSector
+    pop    ax
+    call   Func_GetFATEntry
+    cmp    ax,    0fffh
+    jz     Label_File_Loaded
+    push   ax
+    mov    dx,    RootDirSectors
+    add    ax,    dx
+    add    ax,    SectorBalance
+    add    bx,    [BPB_BytesPerSec]
+    jmp    Label_Go_On_Loading_File
+
+Label_File_Loaded:
+
+    jmp    $
+```
+
+在`Label_FileName_Found`模块中，程序会先取得目录项DIR_FstClus字段的数值，并通过配置ES寄存器和BX寄存器来指定loader.bin程序在内存中的起始地址，再根据loader.bin程序的起始簇号计算出其对应的扇区号。为了增强人机交互效果，此处还使用BIOS中断服务程序INT 10h在屏幕上显示一个字符`'.'`。接着，每读入一个扇区的数据就通过`Func_GetFATEntry`模块取得下一个FAT表项，并跳转至`Label_Go_On_Loading_File`处继续读入下一个簇的数据，如此往复，直至`Func_GetFATEntry`模块返回的FAT表项值是`0fffh`为止。当loader.bin文件的数据全部读取到内存后，跳转至`Label_File_Loaded`处准备执行loader.bin程序。
+
+
+
+
+
+
+
+### 从Boot跳转到Loader
+
+我们在boot中植入跳转到loader的指令：
+
+```assembly
+Label_File_Loaded:
+	jmp BaseOfLoader:OffsetOfLoader
+```
+
+
+
+然后再写一个Loader的程序：
+
+```assembly
+
+org	10000h
+
+	mov	ax,	cs
+	mov	ds,	ax
+	mov	es,	ax
+	mov	ax,	0x00
+	mov	ss,	ax
+	mov	sp,	0x7c00
+
+;=======	display on screen : Start Loader......
+
+	mov	ax,	1301h
+	mov	bx,	000fh
+	mov	dx,	0200h		;row 2
+	mov	cx,	12
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	StartLoaderMessage
+	int	10h
+
+	jmp	$
+
+;=======	display messages
+
+StartLoaderMessage:	db	"Start Loader"
+
+
+```
+
+接下来就可以执行了，为了执行，我更改了一下makefile文件，同时添加了一些提示以防我忘记一些关键步骤：
+
+```makefile
+BOOT_DIR=./src/boot
+BUILD_DIR=./build
+BUILD_BIN_DIR=./build/bin
+
+all: boot.bin loader.bin
+	echo 执行完成
+
+boot.bin: 
+# 生成boot的bin文件
+	nasm $(BOOT_DIR)/boot.asm -o $(BUILD_BIN_DIR)/boot.bin 
+
+loader.bin:
+# 生成loader的bin文件
+	nasm $(BOOT_DIR)/loader.asm -o $(BUILD_BIN_DIR)/loader.bin 
+
+
+install: 
+# 将boot的bin写入到引导扇区内 
+
+	echo "特别声明：不要删除boot.img，如果删除了， 请到64位操作系统书中36页寻找复原方法"
+	dd if=$(BUILD_BIN_DIR)/boot.bin of=$(BUILD_DIR)/boot.img bs=512 count=1 conv=notrunc 
+	sudo mount $(BUILD_DIR)/boot.img /media/ -t vfat -o loop
+	sudo cp $(BUILD_BIN_DIR)/loader.bin /media
+	sync
+	sudo umount /media/
+	echo 挂载完成，请进入build文件夹后输入"bochs -f ./bochsrc"以启动虚拟机
+
+clean: 
+# 清空生成的文件的方法, 不清空本来就有的img文件
+	rm -rf $(BUILD_BIN_DIR)/boot.bin $(BUILD_BIN_DIR)/loader.bin
+```
+
+
+
+
+
+### 总体回顾
+
+经过上面的学习，我们已经对boot有了一个比较全面的认知了，在这里我们再全面的梳理一下boot时发生的事件：
+
+- 首先，boot程序挂载在`0x7c00`的位置，在`0x7c00`前面的是bios例程，boot程序不需要我们手动操作，就会被自动执行，当然boot程序必须以`0xaa55`结尾，这样才能被系统识别，这是boot程序的一些基本属性。
+- 作为开机后执行的第一个程序，boot的大小被限制在512kb，显然，这是不够的，所以我们需要让boot
