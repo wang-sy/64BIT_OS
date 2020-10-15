@@ -889,3 +889,262 @@ clean:
 
 
 
+## 第三部分Loader
+
+
+
+在上一节中，我们已经把Boot写好了，这一章的半壁江山也被我们打下来了。我们还记得在第二部分中，我们使用Boot将Loader读取到了内存中，并且跳转到了Loader中，也就是说，接下来就会执行Loader中的内容，或者用作者的话来讲就是控制权交到了Loader的手中，我们在上一节中，只是完成了一个极简的、能够验证loader是否被执行的程序。在这一节中，我们想要写出来一个正正八经的loader，那么在写loader之前，我们需要知道它是干什么的
+
+
+
+### Loader的作用
+
+
+
+#### 前导知识——实模式与保护模式
+
+CPU复位或是上电的时候就是从实模式来启动的，在这个时候处理器以实模式来工作，不区分任何权限，也不能访问20位以上的地址线（1M内存），之后加载操作系统模块后，进入保护模式。
+
+进入保护模式后，操作系统全权接管cpu，这个时候能够访问所有的内存，但是进入保护模式后，有些机器自身的信息是不能被读取的了。
+
+
+
+
+
+#### Loader执行的操作
+
+我们可以先简单的把Loader执行的操作划分为三个阶段：
+
+- 检测硬件信息：这个操作是只有在实模式下才能够进行的，Loader会检测硬件的一些参数，然后将他们传递到下一阶段
+- 处理器模式切换：这个就是我们前面说的从实模式转化到保护模式，进入到保护模式后，还要再进行一次切换，因为内核模式只能操作32位的操作系统，也就是智能操作`4G`内存，所以我们需要切换到`IA-32e`模式，也叫`长模式`，在该模式下才能够成为64位的操作系统。
+- 向内核传递数据：Loader实质上是一个预处理的阶段，如果你用的是双系统的话，进入`grub2`的时候，执行的应该就是Loader的操作，即：进行系统自检，并且让用户选择启动模式，然后再根据不同的启动模式来进入系统，综合来说，这些功能被参数控制，参数可以被概括为：
+  - 控制信息：用户选择的启动模式等等（由软件决定）。
+  - 硬件数据信息：获取一些硬件的信息，比如内存信息。
+
+
+
+懂了他做的事情之后，我们来正式的写一下这个程序（看到作者给的例程接近800行，我感觉整个人都要归西了）
+
+
+
+### 一些宏定义以及include
+
+是的，汇编也可以include，我们首先建立一个`fat12.inc`：
+
+```assembly
+RootDirSectors	equ	14 ; 根目录区占用的扇区数
+SectorNumOfRootDirStart	equ	19 ; 根目录区起始扇区号
+SectorNumOfFAT1Start	equ	1 ; 起始扇区号
+SectorBalance	equ	17	
+
+    BS_OEMName          db  'MINEboot'  ; 表示的是生产商的名字，我不要脸一点直接写自己名字了
+    BPB_BytesPerSec     dw  512         ; 每个扇区的字节数
+    BPB_SecPerClus      db  1           ; 每个簇的扇区数
+    BPB_RsvdSecCnt	    dw	1           ; 保留扇区数
+	BPB_NumFATs	        db	2           ; FAT表的数量
+	BPB_RootEntCnt	    dw	224         ; 根目录可容纳的目录项数
+	BPB_TotSec16	    dw	2880        ; 总扇区数
+	BPB_Media	        db	0xf0        ; 介质描述符
+	BPB_FATSz16	        dw	9           ; 每FAT扇区数
+	BPB_SecPerTrk	    dw	18          ; 每磁道扇区数
+	BPB_NumHeads	    dw	2           ; 磁头数
+	BPB_HiddSec	        dd	0           ; 隐藏扇区数
+	BPB_TotSec32	    dd	0           
+	BS_DrvNum	        db	0           ; int 13h 的驱动器号
+	BS_Reserved1	    db	0           ; 未使用
+	BS_BootSig	        db	0x29        ; 扩展引导标记
+	BS_VolID	        dd	0           ; 卷序列号
+	BS_VolLab	        db	'boot loader' ; 卷标
+	BS_FileSysType	    db	'FAT12   '  ; 文件系统类型
+
+```
+
+
+
+这段内容就是我们将`boot.asm`中的内容去掉jump语句以及空语句完全复制过来的，上面的文件就是我们要`%include`的东西，我们来看下如何`include`：
+
+```assembly
+org    10000h
+    jmp    Label_Start
+
+%include    "fat12.inc" ; 引用了一个文件
+;这个文件就在同目录下的fat12.inc中，其中储存着fat12的一些基本信息
+
+
+BaseOfKernelFile          equ    0x00
+OffsetOfKernelFile        equ    0x100000
+
+BaseTmpOfKernelAddr       equ    0x00
+OffsetTmpOfKernelFile     equ    0x7E00
+
+MemoryStructBufferAddr    equ    0x7E00
+```
+
+
+
+可以看到，我们直接使用`%include "fileName"`的形式就将上面的东西都引入进来了。这里的Loader最终会被加载到：`0x100000`处，也就是内存的`1MB`处，因为`1MB`以下的地址并不全是可用空间，这段空间被划分成若干个子空间段，我们的内核程序跳过复杂的前1MB，从平坦的`1MB`开始，也是一个很好的选择。当然，由于我们的处理器在实模式下需要使用中断方法`INT 13h`实现读取内核程序，只能访问1MB的内存，所以我们需要将内核程序暂时存储在`0x7E00`内存处，然后再通过特殊方式搬运到1MB以上的内存空间中。当内核程序被转存到最终内存空间后，这个临时转存空间就可以另作他用，此处将其改为内存结构数据的存储空间，供内核程序初始化时使用。
+
+
+
+### 输出提示信息
+
+```assembly
+;=======	声明，在16位宽模式下实现
+[SECTION .s16]
+[BITS 16]
+
+Label_Start:
+
+	mov	ax,	cs
+	mov	ds,	ax
+	mov	es,	ax
+	mov	ax,	0x00
+	mov	ss,	ax
+	mov	sp,	0x7c00
+
+;=======	在屏幕上显示 : Start Loader......
+
+	mov	ax,	1301h
+	mov	bx,	000fh
+	mov	dx,	0200h		;row 2
+	mov	cx,	12
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	StartLoaderMessage
+	int	10h
+```
+
+
+
+这里这些东西，我们都是非常的熟悉了，就不多做赘述了，主要要说的是：
+
+```assembly
+[SECTION .s16]
+[BITS 16]
+```
+
+这一段代码在做的是：声明这段代码处于`16位宽`状态下，如果我们想在这种状态下使用32位宽的数据指令或地址指令，那么我们需要在指令前加入前缀：`0x66`或`0x67`。同理在32位模式下，如果要使用16位宽的指令也需要加入前缀，但显然这不是我们需要研究的主要内容，所以我们不多赘述。
+
+
+
+### 在实模式下4GB寻址
+
+```assembly
+;=======	打开 A20， 进入Big Real Mode
+	push	ax
+	in	al,	92h ; 从92h端口读取一字节数据到al
+	or	al,	00000010b ; 或一下
+	out	92h,	al ; 将al输出到92h端口
+	pop	ax 
+	; 我猜测这里在做的就是不管92h是什么，都用92h这个端口将20A功能开启
+
+	cli ; 禁止所有中断
+
+	db	0x66 ; 声明在16位情况下使用32位宽数据指令
+	lgdt	[GdtPtr]	; lgdt将段描述子读取到对应区域
+
+	;  启动保护模式， 通过更改cr0的最低位
+	mov	eax,	cr0
+	or	eax,	1
+	mov	cr0,	eax
+
+	mov	ax,	SelectorData32 ; 将不知道啥玩意读取到ax
+	mov	fs,	ax ; 再存到fs?
+	mov	eax,	cr0 ; 重新更改cr0以进入实模式
+	and	al,	11111110b
+	mov	cr0,	eax
+
+	sti ; 开始接收中断
+```
+
+
+
+
+
+我们首先需要搞懂的是，我们的代码是怎么在实模式下访问到`1MB`以外的内存空间的。这要从`A20`开始讲起：
+
+#### A20
+
+早期的处理器只有20根地址线，这就代表处理器只能寻找到`1MB`以内的物理地址空间，如果超过了那就只有低20位有效。但是后来的处理器变强了，已经突破了20根地址线了，这个时候就出现了**兼容性问题**，为解决该问题，就只好设置一个控制开启或禁止`1MB`范围的开关。对此，英特尔的8042键盘控制器上恰好有空闲的端口引脚，从而使用此引脚作为功能控制开关，这个被称为`A20`功能。这个8042控制器是一个芯片，位于我们的电脑主板上，负责与我们的键盘进行通信，可以把它理解为一个桥（interface）。
+
+
+
+**一句话总结**：`A20`对应的引脚：
+
+- 低电平(0)：那么只有低20位有效，其他位都是0
+- 高电平(1)：那么就全都有效
+
+
+
+#### 开启A20的方法
+
+
+
+既然存在`A20`这个玩意，那就有很多开启他的方法：
+
+- 方法一：直接操作键盘控制器
+- 方法二：快速门，使用IO端口来处理`A20`信号线。
+- 方法三：使用BIOS中的中断服务程序`INT 15h`的主功能号`AX=2401`可以开启`A20`地址线，`AX=2402`可以关闭`A20`地址线，`AX=2402`可以查看`A20`的状态
+- 方法四：读`0xee`端口来开启`A20`信号线
+
+
+
+如果让我选的话，我肯定用中断的方法来开启他（因为我只会这个），但可惜作者选择了使用快速门的方法，那么我们也跟着他学一手吧。
+
+
+
+#### 开启A20后的操作
+
+- 使用`CLI`指令关闭外部中断（这个指令是禁止一切中断发生的指令）
+- 通过指令`LGDT`加载保护模式结构数据信息
+- 为FS段寄存器加载新的数据段值
+- 一旦数据加载完成就从保护模式退出，并且开启外部中断（`STI`）
+- 操作完成，进入Big Real Mode
+
+
+
+#### 调试观察
+
+我们在sti语句下添加`jmp $`语句，以让程序停留在此处，然后让虚拟机运行起来，我们在这里调试一下，那段代码如下：
+
+```assembly
+sti
+
+jump $
+```
+
+开启后，按`Ctrl + C`并且执行`sreg`指令：
+
+```shell
+<bochs:2> sreg
+es:0x1000, dh=0x00009301, dl=0x0000ffff, valid=1
+        Data segment, base=0x00010000, limit=0x0000ffff, Read/Write, Accessed
+cs:0x1000, dh=0x00009301, dl=0x0000ffff, valid=1
+        Data segment, base=0x00010000, limit=0x0000ffff, Read/Write, Accessed
+ss:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
+        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
+ds:0x1000, dh=0x00009301, dl=0x0000ffff, valid=1
+        Data segment, base=0x00010000, limit=0x0000ffff, Read/Write, Accessed
+fs:0x0010, dh=0x00cf9300, dl=0x0000ffff, valid=1
+        Data segment, base=0x00000000, limit=0xffffffff, Read/Write, Accessed
+gs:0x0000, dh=0x00009300, dl=0x0000ffff, valid=1
+        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
+ldtr:0x0000, dh=0x00008200, dl=0x0000ffff, valid=1
+tr:0x0000, dh=0x00008b00, dl=0x0000ffff, valid=1
+gdtr:base=0x00010040, limit=0x17
+idtr:base=0x00000000, limit=0x3ff
+```
+
+我们看fs寄存器还有段的Data：
+
+```
+fs:0x0010
+Data segment, base=0x00000000, limit=0xffffffff, Read/Write, Accessed
+```
+
+段基址：`base=0x00000000`，段限长：`limit=0xffffffff`寻址能力从20位到了32位。
+
+需要注意的是：我们让段寄存器拥有这种特殊能力后，如果重新对其赋值的话，那么他就会失去特殊能力，变为之前的实模式寄存器。（但是bochs虚拟机放宽了这一需求）这一阶段就算完成了。
+
