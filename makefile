@@ -14,6 +14,7 @@ install:
 	dd if=$(BOOT_BUILD_DIR)/boot.bin of=$(PROJECT_BUILD_DIR)/boot.img bs=512 count=1 conv=notrunc 
 	sudo mount $(PROJECT_BUILD_DIR)/boot.img /media/ -t vfat -o loop
 	sudo cp $(BOOT_BUILD_DIR)/loader.bin /media
+	sudo cp $(BOOT_BUILD_DIR)/kernel.bin /media
 	sync
 	sudo umount /media/
 	echo 挂载完成，请进入build文件夹后输入"bochs -f ./bochsrc"以启动虚拟机

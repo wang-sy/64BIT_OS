@@ -194,7 +194,7 @@ StartBootMessage:	db	"01234567891011121314151617181920"
 
 随后进行查看，结果如下：
 
-<img src="/home/wangsy/Code/os/docs/pics/尝试不更改长度.png" style="zoom: 50%;" />
+<img src="./pics/尝试不更改长度.png" style="zoom: 50%;" />
 
 我们对`cx`进行修改后即可显示完全：
 
@@ -202,7 +202,7 @@ StartBootMessage:	db	"01234567891011121314151617181920"
     mov cx, 0x20
 ```
 
-<img src="/home/wangsy/Code/os/docs/pics/lab1/image-20200930162323357.png" alt="image-20200930162323357" style="zoom:50%;" />
+<img src="./pics/lab1/image-20200930162323357.png" alt="image-20200930162323357" style="zoom:50%;" />
 
 
 
@@ -464,7 +464,7 @@ Label_Go_On_Reading:
 
 除此之外，我们还需要熟悉一下除法指令，除法指令：`div 寄存器`，这个指令中，没有显式的表示除数和被除数。被除数，默认的将被除数放在了AX或DX和AX中。如果除数是8位的寄存器，那么被除数被认为是AX，如果除数是16位那么被除数是DX和AX，我们可以看下下面的表格：
 
-<img src="C:\Users\wangsy\AppData\Roaming\Typora\typora-user-images\image-20201012070938611.png" alt="image-20201012070938611" style="zoom: 50%;" />
+
 
 就是在这里感觉，mips的设计实在是比`x86`人性化太多了。
 
@@ -872,7 +872,7 @@ clean:
 
 执行结果：
 
-![image-20201014165851919](/home/wangsy/Code/os/docs/pics/lab1/image-20201014165851919.png)
+![image-20201014165851919](./pics/lab1/image-20201014165851919.png)
 
 ### 总体回顾
 
@@ -1148,3 +1148,822 @@ Data segment, base=0x00000000, limit=0xffffffff, Read/Write, Accessed
 
 需要注意的是：我们让段寄存器拥有这种特殊能力后，如果重新对其赋值的话，那么他就会失去特殊能力，变为之前的实模式寄存器。（但是bochs虚拟机放宽了这一需求）这一阶段就算完成了。
 
+
+
+### 寻找kernel.bin
+
+这段仍然是在根目录中寻找文件，只不过这里找的是`kernel.bin`，我们这里就把原来的代码搬过来用，需要改变的就是用于比较的字符串了：
+
+```assembly
+;=======	搜索kernel.bin
+	mov	word	[SectorNo],	SectorNumOfRootDirStart
+
+Lable_Search_In_Root_Dir_Begin:
+
+	cmp	word	[RootDirSizeForLoop],	0
+	jz	Label_No_LoaderBin
+	dec	word	[RootDirSizeForLoop]	
+	mov	ax,	00h
+	mov	es,	ax
+	mov	bx,	8000h
+	mov	ax,	[SectorNo]
+	mov	cl,	1
+	call	Func_ReadOneSector
+	mov	si,	KernelFileName
+	mov	di,	8000h
+	cld
+	mov	dx,	10h
+	
+Label_Search_For_LoaderBin:
+
+	cmp	dx,	0
+	jz	Label_Goto_Next_Sector_In_Root_Dir
+	dec	dx
+	mov	cx,	11
+
+Label_Cmp_FileName:
+
+	cmp	cx,	0
+	jz	Label_FileName_Found
+	dec	cx
+	lodsb	
+	cmp	al,	byte	[es:di]
+	jz	Label_Go_On
+	jmp	Label_Different
+
+Label_Go_On:
+	
+	inc	di
+	jmp	Label_Cmp_FileName
+
+Label_Different:
+
+	and	di,	0FFE0h
+	add	di,	20h
+	mov	si,	KernelFileName
+	jmp	Label_Search_For_LoaderBin
+
+Label_Goto_Next_Sector_In_Root_Dir:
+	
+	add	word	[SectorNo],	1
+	jmp	Lable_Search_In_Root_Dir_Begin
+	
+;=======	没有找到时进入，输出 : ERROR:No KERNEL Found
+
+Label_No_LoaderBin:
+
+	mov	ax,	1301h
+	mov	bx,	008Ch
+	mov	dx,	0300h		;row 3
+	mov	cx,	21
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	NoLoaderMessage
+	int	10h
+	jmp	$
+```
+
+
+
+### 转移内核程序
+
+```assembly
+;=======	找到文件后进行，将内核程序从软盘转移到内存
+
+Label_FileName_Found:
+	mov	ax,	RootDirSectors
+	and	di,	0FFE0h
+	add	di,	01Ah
+	mov	cx,	word	[es:di]
+	push	cx
+	add	cx,	ax
+	add	cx,	SectorBalance
+	mov	eax,	BaseTmpOfKernelAddr	;BaseOfKernelFile
+	mov	es,	eax
+	mov	bx,	OffsetTmpOfKernelFile	;OffsetOfKernelFile
+	mov	ax,	cx
+
+Label_Go_On_Loading_File:
+	push	ax
+	push	bx
+	mov	ah,	0Eh
+	mov	al,	'.'
+	mov	bl,	0Fh
+	int	10h
+	pop	bx
+	pop	ax
+
+	mov	cl,	1
+	call	Func_ReadOneSector
+	pop	ax
+
+;;;;;;;;;;;;;;;;;;;;;;;	
+	push	cx
+	push	eax
+	push	fs
+	push	edi
+	push	ds
+	push	esi
+
+	mov	cx,	200h
+	mov	ax,	BaseOfKernelFile
+	mov	fs,	ax
+	mov	edi,	dword	[OffsetOfKernelFileCount]
+
+	mov	ax,	BaseTmpOfKernelAddr
+	mov	ds,	ax
+	mov	esi,	OffsetTmpOfKernelFile
+
+Label_Mov_Kernel:	;------------------
+	
+	mov	al,	byte	[ds:esi]
+	mov	byte	[fs:edi],	al
+
+	inc	esi
+	inc	edi
+
+	loop	Label_Mov_Kernel
+
+	mov	eax,	0x1000
+	mov	ds,	eax
+
+	mov	dword	[OffsetOfKernelFileCount],	edi
+
+	pop	esi
+	pop	ds
+	pop	edi
+	pop	fs
+	pop	eax
+	pop	cx
+;;;;;;;;;;;;;;;;;;;;;;;	
+
+	call	Func_GetFATEntry
+	cmp	ax,	0FFFh
+	jz	Label_File_Loaded
+	push	ax
+	mov	dx,	RootDirSectors
+	add	ax,	dx
+	add	ax,	SectorBalance
+
+	jmp	Label_Go_On_Loading_File
+```
+
+这段主要在执行的就是：逐字节的将kernel文件移动到`1MB`以上的物理内存空间。还是老规矩，我们来解读一下代码，我们可以将他工作的流程大致分为以下几个阶段：
+
+- 调用`Func_ReadOneSector`，读取一个扇区
+
+- `loop	Label_Mov_Kernel`循环转移Kernel，这段代码用于转移kernel的核心语句是：
+
+  ```assembly
+  mov	al,	byte	[ds:esi]
+  mov	byte	[fs:edi],	al
+  
+  inc	esi
+  inc	edi
+  ```
+
+  他们的意思就是：将原来的一个字节存到al中，再将al存到目标地址，然后再将目标地址与当前存储的指针都向后移动。这个非常简单。
+
+- 通过`Func_GetFATEntry`进入下一个扇区继续使用`Func_ReadOneSector`进行读取，读取完毕后继续转移
+
+可以说整体的流程还是非常简单的，我感觉读汇编最困难的地方，就像是你在读一个只会用abcd命名的人写的c语言一样，你看不懂每一个变量名都在干啥，就很难受，同时如果你像我一样没有`nasm`汇编基础，只学过`mips`的话，你会觉得`intel`设计的汇编语言非常不适合人类使用，我猜想，在早期，因特尔的汇编应当也是非常简单易用的，只不过随着时代的发展，汇编语言也在不断更新，但身为一个大厂，需要做到向下兼容，所以才导致了一条语句在不同情况下对应不同的操作数等等的情况，这种情况实属无奈。
+
+
+
+### 快速显示文字
+
+```assembly
+Label_File_Loaded:
+		
+	mov	ax, 0B800h
+	mov	gs, ax
+	mov	ah, 0Fh				; 0000: 黑底    1111: 白字
+	mov	al, 'G'
+	mov	[gs:((80 * 0 + 39) * 2)], ax	; 屏幕第 0 行, 第 39 列。
+```
+
+在这段代码中，我们实际上是在将'G'这个字符放到了内存中`gs:((80 * 0 + 39) * 2)`的这个地方，这个gs在这里是`0B800h`以这里为起点，向后偏移一段区域的内存专门用于存储在屏幕上显示的字，每个字占位两个字节，每行最多显示80个字符，所以就有上面的公式：`((80 * 0 + 39) * 2)`这表示第0行的39列显示该字符。
+
+
+
+我们使用作者在下一章提供的`kernel`文件夹编译出的`kernel.bin`文件作为这里的内核文件，进行编译，结果如下：
+
+<img src="./pics/lab1/image-20201015202939750.png" alt="image-20201015202939750" style="zoom:67%;" />
+
+可以看到，先显示了一些点，然后又在前面显示了G，这个G没有通过系统中断进行显示，而是直接写入到了显示文字的内存区域。
+
+### 关闭软驱马达
+
+到上一个步骤，在屏幕上显示了那个G之后，我们已经成功的将`kernel.bin`文件从软盘加载到了内存，所以我们就可以把软盘的驱动关掉了。
+
+```assembly
+KillMotor:
+	
+	push	dx
+	mov	dx,	03F2h
+	mov	al,	0	
+	out	dx,	al
+	pop	dx
+
+```
+
+这个操作是向`IO`端口`03F2h`写入控制命令实现的，这个端口控制着软驱的一些硬件功能。可以通过作者给出的表格了解具体的功能：
+
+| 位   | 名称     | 说明                                            |
+| :--- | :------- | :---------------------------------------------- |
+| 7    | MOT_EN3  | 控制软驱D马达，1：启动；0：关闭                 |
+| 6    | MOT_EN2  | 控制软驱C马达，1：启动；0：关闭                 |
+| 5    | MOT_EN1  | 控制软驱B马达，1：启动；0：关闭                 |
+| 4    | MOT_EN0  | 控制软驱A马达，1：启动；0：关闭                 |
+| 3    | DMA_INT  | 1：允许DMA和中断请求 0：禁止DMA和中断请求       |
+| 2    | RESET    | 1：允许软盘控制器发送控制信息 0：复位软盘驱动器 |
+| 1    | DRV_SEL1 | 00~11用于选择软盘驱动器A~D                      |
+| 0    | DRV_SEL0 |                                                 |
+
+我们在前面已经调用过汇编语言中的`OUT`了，它是用于将一个寄存器中的值或是立即数等等，输出到`I/O`端口的。
+
+
+
+### 获取不同类型内存块的范围
+
+```assembly
+;=======	get memory address size type
+
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0400h		;row 4
+	mov	cx,	24
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	StartGetMemStructMessage
+	int	10h
+
+	mov	ebx,	0
+	mov	ax,	0x00
+	mov	es,	ax
+	mov	di,	MemoryStructBufferAddr	
+
+Label_Get_Mem_Struct:
+
+	mov	eax,	0x0E820
+	mov	ecx,	20
+	mov	edx,	0x534D4150
+	int	15h
+	jc	Label_Get_Mem_Fail
+	add	di,	20
+
+	cmp	ebx,	0
+	jne	Label_Get_Mem_Struct
+	jmp	Label_Get_Mem_OK
+
+Label_Get_Mem_Fail:
+
+	mov	ax,	1301h
+	mov	bx,	008Ch
+	mov	dx,	0500h		;row 5
+	mov	cx,	23
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetMemStructErrMessage
+	int	10h
+	jmp	$
+
+Label_Get_Mem_OK:
+	
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0600h		;row 6
+	mov	cx,	29
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetMemStructOKMessage
+	int	10h	
+
+```
+
+
+
+这一节的名字并不严谨，它实际上执行的操作是：获取地址空间类型（寄存器地址空间、内存空洞等等的），并且将这些信息存储在`0x7E00`地址处的临时转存空间中。为了得到这些信息，我们使用了`INT 15h`中断（我们之前说过，可以用它开启A20模式）。我们先来看一下 INT 15h中断，再来讲解具体的执行过程。
+
+
+
+#### INT 15 中断详解
+
+这里的内容摘自一篇博客——[《INT 15h AX=E820h的用法》](https://blog.csdn.net/weixin_42707324/article/details/108306596)
+
+##### 输入信息
+
+| 寄存器 | 作用                                                         |
+| ------ | ------------------------------------------------------------ |
+| eax    | 功能码，当输入e820h时能够探测内存                            |
+| ebx    | 主要用于指向内存区域，第一次调用时ebx=0,被称为continuation value |
+| es:di  | 用于指令执行后，在指向的内存写入描述内存区域的数据结构ARDS(Address Range Descriptor Structure) |
+| ecx    | 用于限制指令填充的ARDS的大小，实际上大多数情况这个是无效的，无论ecx设置为多少，BIOS始终会填充20字节的ARDS |
+| edx    | 0534D4150h(‘SMAP’),输入时在edx，输出时将会在eax中            |
+
+
+
+##### 输出信息
+
+| 寄存器 | 结果                                                         |
+| ------ | ------------------------------------------------------------ |
+| CF     | 当没有发生错误时,CF=0,否则CF=1                               |
+| eax    | 0534D4150h(‘SMAP’)                                           |
+| ebx    | 指向下一个内存区域，而不是调用之前的内存区域，当ebx=0且CF=0时，表示当前是最后一个内存区域。 |
+| es:di  | 和调用之前一样，如果要保存多个ARDS，需要手动修改es:di        |
+| ecx    | 返回写入的ARDS的大小                                         |
+
+##### ARDS的结构（共20字节，Type为4字节）
+
+| 偏移 | 名称         | 意义                 |
+| ---- | ------------ | -------------------- |
+| 0    | BaseAddrLow  | 基地址的低32位       |
+| 4    | BaseAddrHigh | 基地址的高32位       |
+| 8    | LengthLow    | 长度（字节）的低32位 |
+| 12   | LengthHigh   | 长度（字节）的高32位 |
+| 16   | Type         | 这个内存区域的类型   |
+
+##### ARDS的Type取值如下：
+
+| 取值 | 名称                 | 意义                                                         |
+| ---- | -------------------- | ------------------------------------------------------------ |
+| 1    | AddressRangeMemory   | 可以被OS使用的内存                                           |
+| 2    | AddressRangeReserved | 正在使用的区域或者不能系统保留不能使用的区域                 |
+| 其他 | 未定义               | 各个具体机器会有不同的意义，在这里我们暂时不用关心，将它视为AddressRangeReserved即可 |
+
+
+
+结合我们的代码来理解一下，在这里我将执行`INT 15h`之前的一些参数列了出来：
+
+```assembly
+mov	ebx,	0
+mov	ax,	0x00
+mov	es,	ax
+mov	di,	MemoryStructBufferAddr	
+mov	eax,	0x0E820
+mov	ecx,	20
+mov	edx,	0x534D4150
+int	15h
+```
+
+这里：
+
+- `ebx=0`说明是第一次调用
+- `es=0`基地址为0，`di`偏移量是`MemoryStructBufferAddr=0x7E00`，共同构成了结果的返回地址`0:0x7E00`，这个和我们之前说的目标地址相同。
+- `eax=0x0E820`功能码，说明要探测内存
+- `ecx`据上面所说，没啥用
+- `edx`输入时在edx，输出时将会在eax中（这个没看懂是干啥的）
+
+
+
+同理，返回时的结果就像上面表里说的一样，我们就不多提了，需要注意的是，进位那里如果是0则说明没有错误。
+
+#### 执行过程
+
+- 输出提示信息"Start Get Memory Struct."
+- 使用INT 15中断，获取内存信息，如果出错，进位为1跳转到`Label_Get_Mem_Fail`，如果没有错则继续执行
+- 判断ebx，如果ebx是0，那么就说明他指向的是最后一个内存区域，那么就跳转到`Label_Get_Mem_OK`，否则回到`Label_Get_Mem_Struct`
+- 如果回到`Label_Get_Mem_Struct`，那么就使用新的ebx继续读取，直到探测完毕为止
+- 探测完毕后进入`Label_Get_Mem_OK`，使用`int    10h `输出一行字进行提示
+
+
+
+
+
+### 定义函数：输出十六进制数字到屏幕
+
+```assembly
+;=======	输出al中的数字到屏幕
+
+Label_DispAL:
+
+	push	ecx
+	push	edx
+	push	edi
+	
+	mov	edi,	[DisplayPosition]
+	mov	ah,	0Fh
+	mov	dl,	al
+	shr	al,	4
+	mov	ecx,	2
+.begin:
+
+	and	al,	0Fh
+	cmp	al,	9
+	ja	.1
+	add	al,	'0'
+	jmp	.2
+.1:
+
+	sub	al,	0Ah
+	add	al,	'A'
+.2:
+
+	mov	[gs:edi],	ax
+	add	edi,	2
+	
+	mov	al,	dl
+	loop	.begin
+
+	mov	[DisplayPosition],	edi
+
+	pop	edi
+	pop	edx
+	pop	ecx
+	
+	ret
+```
+
+
+
+
+
+
+
+这个函数就是将一个十六进制的数字输出到屏幕，我们也不去剖析它的原理了，和C语言处理字符串基本一致，别问我为什么是`al`，我也想把参数变成`oct_num`。
+
+调用方法：
+
+```assembly
+mov al, 13
+call Label_DispAL
+```
+
+
+
+
+
+### 获取显示模式信息进行展示，并且设置显示模式
+
+
+
+#### 获取显示模式的信息进行展示（非关键）
+
+```assembly
+;=======	get SVGA information
+
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0800h		;row 8
+	mov	cx,	23
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	StartGetSVGAVBEInfoMessage
+	int	10h
+
+	mov	ax,	0x00
+	mov	es,	ax
+	mov	di,	0x8000
+	mov	ax,	4F00h
+
+	int	10h
+
+	cmp	ax,	004Fh
+
+	jz	.KO
+	
+;=======	Fail
+
+	mov	ax,	1301h
+	mov	bx,	008Ch
+	mov	dx,	0900h		;row 9
+	mov	cx,	23
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetSVGAVBEInfoErrMessage
+	int	10h
+
+	jmp	$
+
+.KO:
+
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0A00h		;row 10
+	mov	cx,	29
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetSVGAVBEInfoOKMessage
+	int	10h
+
+;=======	Get SVGA Mode Info
+
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0C00h		;row 12
+	mov	cx,	24
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	StartGetSVGAModeInfoMessage
+	int	10h
+
+
+	mov	ax,	0x00
+	mov	es,	ax
+	mov	si,	0x800e
+
+	mov	esi,	dword	[es:si]
+	mov	edi,	0x8200
+
+Label_SVGA_Mode_Info_Get:
+
+	mov	cx,	word	[es:esi]
+
+;=======	display SVGA mode information
+
+	push	ax
+	
+	mov	ax,	00h
+	mov	al,	ch
+	call	Label_DispAL
+
+	mov	ax,	00h
+	mov	al,	cl	
+	call	Label_DispAL
+	
+	pop	ax
+
+;=======
+	
+	cmp	cx,	0FFFFh
+	jz	Label_SVGA_Mode_Info_Finish
+
+	mov	ax,	4F01h
+	int	10h
+
+	cmp	ax,	004Fh
+
+	jnz	Label_SVGA_Mode_Info_FAIL	
+
+	add	esi,	2
+	add	edi,	0x100
+
+	jmp	Label_SVGA_Mode_Info_Get
+		
+Label_SVGA_Mode_Info_FAIL:
+
+	mov	ax,	1301h
+	mov	bx,	008Ch
+	mov	dx,	0D00h		;row 13
+	mov	cx,	24
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetSVGAModeInfoErrMessage
+	int	10h
+
+Label_SET_SVGA_Mode_VESA_VBE_FAIL:
+
+	jmp	$
+
+Label_SVGA_Mode_Info_Finish:
+
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0E00h		;row 14
+	mov	cx,	30
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetSVGAModeInfoOKMessage
+	int	10h
+
+	jmp $
+
+```
+
+
+
+
+
+最后一行的` jmp $ `是我自己加进来的，为了在这里停留一下。我们的程序输出了很多的字符，在第一排，这些字符就表示SVGA芯片支持显示的显示模式号。这个时候我们最开始输出的一些信息已经被覆盖了，这说明我们写入的这块内存就是用于存储屏幕上显示的字符的区域。
+
+大家不要太过纠结这块代码，因为这块意义不大，最后显示的结果如下：
+
+<img src="./pics/lab1/image-20201015212403205.png" alt="image-20201015212403205" style="zoom:67%;" />
+
+#### 设置显示模式
+
+上面我们看到了一堆显示模式，这里我们就设置一下他们就可以了：
+
+```assembly
+;=======	set the SVGA mode(VESA VBE)
+
+	mov	ax,	4F02h
+	mov	bx,	4180h	;========================mode : 0x180 or 0x143
+	int 	10h
+
+	cmp	ax,	004Fh
+	jnz	Label_SET_SVGA_Mode_VESA_VBE_FAIL
+
+	jmp $
+```
+
+设置完成后，程序在本地停留，我们现实的结果如下：可以看出来屏幕变大了哈哈哈，但是由于是图片的原因，所以可能感受不是特别直观，这张图片和上一张图片都缩放了`67%`，大家可以进行一个简单的对比。
+
+<img src="./pics/lab1/image-20201015213224055.png" alt="image-20201015213224055" style="zoom:67%;" />
+
+最后提醒一下大家，从这里继续向下之前，记得把`jmp $`删掉，要不然程序会一直停留在这里。
+
+
+
+### 模式转化（知识性讲解）
+
+在正式开始写这块代码之前，我们先来进行一些简单的讲解。
+
+#### 为什么需要转化模式
+
+我们在实模式下开启了“Big Real Mode”，在该模式下可以访问4G内存了，那么我们为什么还需要转换模式呢？这是因为，我们虽然可以访问任何的内存空间，但是没有办法限制程序执行的权限，在这种情况下如果程序执行错误，那么就会让系统全部崩溃。
+
+在保护模式中，处理器按照程序的级别分为`0,1,2,3`四个等级，最高级是0由操作系统的内核调用，可以执行所有的指令，最低的等级3由应用程序使用，中间的等级可以预留给系统调用等程序来使用。同时，保护模式引入了分页的功能。
+
+
+
+#### 如何从实模式进入保护模式
+
+需要经过下面的过程：
+
+- 准备一个GDT表：GDT就是全局描述符表
+- 用lgdt加载gdtr
+- 关闭系统中断（在保护模式下，中断和异常都是由IDT来管理，需要使用LIDT指令将这个表加载到IDTR寄存器）
+- 打开A20
+- cr0的PE置为1（需要分页机制的话还需要将CR0寄存器的PG标志位开启【在此之前需要在内存中创建一个页目录和页表】）
+- 如果需要多任务机制，那么需要创建至少一个任务状态段TSS结构和附加的TSS段描述符并且使用LTR汇编指令将其加载至TR寄存器
+- 跳转，进入保护模式
+
+
+
+我们这里就大概一讲，接下来我们看具体的代码是怎么做的：
+
+
+
+
+
+### 创建GDT表
+
+```assembly
+[SECTION gdt]
+
+LABEL_GDT:		dd	0,0
+LABEL_DESC_CODE32:	dd	0x0000FFFF,0x00CF9A00 ; 两个字拼接而成
+LABEL_DESC_DATA32:	dd	0x0000FFFF,0x00CF9200 ; 双字
+
+GdtLen	equ	$ - LABEL_GDT
+GdtPtr	dw	GdtLen - 1
+	dd	LABEL_GDT
+
+SelectorCode32	equ	LABEL_DESC_CODE32 - LABEL_GDT
+SelectorData32	equ	LABEL_DESC_DATA32 - LABEL_GDT
+```
+
+
+
+这段代码就是用于创建一个临时的GDT表的代码
+
+这里将代码段和数据段的段基址都设置在了`0x0000`，同时将段限长设置为了`0xffff`，可以索引0~4GB的内存空间。
+
+`GdtPtr`是此结构的起始地址，`SelectorCode32`和`SelectorData32`是两个段选择子，他们是段描述符在GDT表中的索引号。
+
+
+
+
+
+### 为IDT开辟内存空间
+
+```assembly
+;=======	开辟 IDT 存储空间
+
+IDT:
+	times	0x50	dq	0
+IDT_END:
+
+IDT_POINTER:
+		dw	IDT_END - IDT - 1
+		dd	IDT
+```
+
+
+
+这里非常简单没啥好说的，就相当于是为IDT预留出了一部分的空间。
+
+> 在处理器切换至保护模式前，引导加载程序已使用`CLI`指令禁止外部中断，所以在切换到保护模式的过程中不会产生中断和异常，进而不必完整地初始化IDT，只要有相应的结构体即可。如果能够保证处理器在模式切换的过程中不会产生异常，即使没有IDT也可以。
+
+
+
+### 从实模式切换到保护模式
+
+需要经过的步骤：
+
+- 使用`CLI`指令屏蔽硬件中断
+- 使用`LGDT`将GDT 的基地址和长度加载到GDTR寄存器中
+- 执行`mov cr0`更改cr0的PE标志位
+- `mov cr0`执行结束后，使用`far jump`切换到保护模式的代码去执行
+- 如果开启分页机制，那么`MOV CR0`指令和`JMP/CALL`（跳转/调用）指令必须位于同一性地址映射的页面内
+- 如需使用LDT，则必须借助`LLDT`汇编指令将GDT内的LDT段选择子加载到LDTR寄存器中。
+- 执行`LTR`汇编指令将一个TSS段描述符的段选择子加载到TR任务寄存器。处理器对TSS段结构无特殊要求，凡是可写的内存空间均可。
+- 进入保护模式后，**数据段寄存器仍旧保留着实模式的段数据**，需要重新加载数据段选择子，或重新使用JMP执行新任务
+- 执行LIDT，将LDT表加载
+- 执行`STI`指令使能可屏蔽硬件中断
+
+当然，我们的代码没有必要完全遵守这一流程：
+
+```assembly
+;=======	初始化 IDT GDT 切换到保护模式
+
+	cli			;======关闭 中断
+
+	db	0x66
+	lgdt	[GdtPtr]
+
+;	db	0x66
+;	lidt	[IDT_POINTER]
+
+	mov	eax,	cr0
+	or	eax,	1
+	mov	cr0,	eax	
+
+	jmp	dword SelectorCode32:GO_TO_TMP_Protect
+```
+
+我们将`jmp	dword SelectorCode32:GO_TO_TMP_Protect`替换为`jmp $`，使用`sreg`查看寄存器的值（这个操作前面搞过，我们这里就不谈了）：
+
+```assembly
+<bochs:4> sreg
+es:0x1000, dh=0x00009301, dl=0x0000ffff, valid=1
+        Data segment, base=0x00010000, limit=0x0000ffff, Read/Write, Accessed
+cs:0x0008, dh=0x00cf9b00, dl=0x0000ffff, valid=1
+        Code segment, base=0x00000000, limit=0xffffffff, Execute/Read, Non-Conforming, Accessed, 32-bit
+ss:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
+        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
+ds:0x1000, dh=0x00009301, dl=0x0000ffff, valid=3
+        Data segment, base=0x00010000, limit=0x0000ffff, Read/Write, Accessed
+fs:0x0010, dh=0x00cf9300, dl=0x0100ffff, valid=1
+        Data segment, base=0x00000100, limit=0xffffffff, Read/Write, Accessed
+gs:0xb800, dh=0x0000930b, dl=0x8000ffff, valid=7
+        Data segment, base=0x000b8000, limit=0x0000ffff, Read/Write, Accessed
+ldtr:0x0000, dh=0x00008200, dl=0x0000ffff, valid=1
+tr:0x0000, dh=0x00008b00, dl=0x0000ffff, valid=1
+gdtr:base=0x00010040, limit=0x17
+idtr:base=0x00000000, limit=0x3ff
+```
+
+在上面的寄存器中，CS段寄存器中的段基地址`base`、段限长`limit`以及其他段属性，自汇编代码`jmp dword SelectorCode32:GO_TO_TMP_Protect`执行后皆发生了改变。与此同时，GDTR寄存器中的数据已更新为`GdtPtr`结构记录的GDT表基地址和长度。
+
+
+
+退出后输出了信息：
+
+```assembly
+00362101883i[      ] dbg: Quit
+00362101883i[CPU0  ] CPU is in protected mode (active)
+00362101883i[CPU0  ] CS.mode = 32 bit
+00362101883i[CPU0  ] SS.mode = 16 bit
+00362101883i[CPU0  ] EFER   = 0x00000000
+00362101883i[CPU0  ] | EAX=60000011  EBX=00004180  ECX=0000001e  EDX=00000e00
+00362101883i[CPU0  ] | ESP=00007c00  EBP=000008ef  ESI=00008098  EDI=0000bd00
+00362101883i[CPU0  ] | IOPL=0 id vip vif ac vm rf nt of df if tf sf zf af PF cf
+00362101883i[CPU0  ] | SEG sltr(index|ti|rpl)     base    limit G D
+00362101883i[CPU0  ] |  CS:0008( 0001| 0|  0) 00000000 ffffffff 1 1
+00362101883i[CPU0  ] |  DS:1000( 0005| 0|  0) 00010000 0000ffff 0 0
+00362101883i[CPU0  ] |  SS:0000( 0005| 0|  0) 00000000 0000ffff 0 0
+00362101883i[CPU0  ] |  ES:1000( 0005| 0|  0) 00010000 0000ffff 0 0
+00362101883i[CPU0  ] |  FS:0010( 0002| 0|  0) 00000100 ffffffff 1 1
+00362101883i[CPU0  ] |  GS:b800( 0005| 0|  0) 000b8000 0000ffff 0 0
+00362101883i[CPU0  ] | EIP=00010364 (00010364)
+00362101883i[CPU0  ] | CR0=0x60000011 CR2=0x00000000
+00362101883i[CPU0  ] | CR3=0x00000000 CR4=0x00000000
+(0).[362101883] [0x000000010364] 0008:00010364 (unk. ctxt): jmp .-2 (0x00010364)      ; ebfe
+00362101883i[CMOS  ] Last time is 1602780155 (Fri Oct 16 00:42:35 2020)
+00362101883i[XGUI  ] Exit
+00362101883i[SIM   ] quit_sim called with exit code 0
+```
+
+CPU is in protected mode说明cpu已经在保护模式下了
+
+
+
+### **从保护模式进入IA-32e模式**
+
+通过刚才的操作，我们从实模式进入到了保护模式，接下来我们想从保护模式进入IA-32e模式。
+
+接下来我们来盘点一下大概的流程：
+
+- 首先，各种描述表符的寄存器`GDTR\LDTR\IDTR\TR`
