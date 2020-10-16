@@ -29,8 +29,8 @@ MemoryStructBufferAddr	equ	0x7E00
 [SECTION gdt]
 
 LABEL_GDT:		dd	0,0
-LABEL_DESC_CODE32:	dd	0x0000FFFF,0x00CF9A00 ; 两个字拼接而成
-LABEL_DESC_DATA32:	dd	0x0000FFFF,0x00CF9200 ; 双字
+LABEL_DESC_CODE32:	dd	0x0000FFFF,0x00CF9A00
+LABEL_DESC_DATA32:	dd	0x0000FFFF,0x00CF9200
 
 GdtLen	equ	$ - LABEL_GDT
 GdtPtr	dw	GdtLen - 1
@@ -79,15 +79,14 @@ Label_Start:
 
 ;=======	open address A20
 	push	ax
-	in	al,	92h ; 从92h端口读取一字节数据到al
-	or	al,	00000010b ; 或一下
-	out	92h,	al ; 将al输出到92h端口
-	pop	ax 
-	; 我猜测这里在做的就是不管92h是什么，都用92h这个端口将20A功能开启
+	in	al,	92h
+	or	al,	00000010b
+	out	92h,	al
+	pop	ax
 
-	cli ; 禁止所有中断
+	cli
 
-	db	0x66 ; 声明在16位情况下使用32位宽数据指令
+	db	0x66
 	lgdt	[GdtPtr]	
 
 	mov	eax,	cr0
@@ -175,7 +174,7 @@ Label_No_LoaderBin:
 	pop	ax
 	mov	bp,	NoLoaderMessage
 	int	10h
-	jmp	$
+	jmp	Label_No_LoaderBin
 
 ;=======	found loader.bin name in root director struct
 
@@ -315,7 +314,7 @@ Label_Get_Mem_Fail:
 	pop	ax
 	mov	bp,	GetMemStructErrMessage
 	int	10h
-	jmp	$
+	jmp	Label_Get_Mem_Fail
 
 Label_Get_Mem_OK:
 	
@@ -367,7 +366,7 @@ Label_Get_Mem_OK:
 	mov	bp,	GetSVGAVBEInfoErrMessage
 	int	10h
 
-	jmp	$
+	jmp	Label_Get_Mem_OK
 
 .KO:
 
@@ -453,7 +452,9 @@ Label_SVGA_Mode_Info_FAIL:
 
 Label_SET_SVGA_Mode_VESA_VBE_FAIL:
 
-	jmp	$
+
+	mov ax, 0x102
+	jmp	Label_SET_SVGA_Mode_VESA_VBE_FAIL
 
 Label_SVGA_Mode_Info_Finish:
 
@@ -498,7 +499,6 @@ Label_SVGA_Mode_Info_Finish:
 
 GO_TO_TMP_Protect:
 
-	jmp $
 ;=======	go to tmp long mode
 
 	mov	ax,	0x10
@@ -603,7 +603,9 @@ support_long_mode_done:
 ;=======	no support
 
 no_support:
-	jmp	$
+
+	mov ax, 0x100
+	jmp	no_support
 
 ;=======	read one sector from floppy
 

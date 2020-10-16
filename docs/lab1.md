@@ -1960,10 +1960,277 @@ CPU is in protected mode说明cpu已经在保护模式下了
 
 
 
-### **从保护模式进入IA-32e模式**
+### **从保护模式进入IA-32e模式**(大体过程)
 
 通过刚才的操作，我们从实模式进入到了保护模式，接下来我们想从保护模式进入IA-32e模式。
 
 接下来我们来盘点一下大概的流程：
 
-- 首先，各种描述表符的寄存器`GDTR\LDTR\IDTR\TR`
+- 首先，各种描述表符的寄存器`GDTR\LDTR\IDTR\TR`，需要重新加载
+- 对于中断与异常和上面也是同理，需要在进入`IA-32e`模式前关闭中断与异常，然后在进入后，重新打开。
+
+详细来说，过程如下：
+
+- 在保护模式下，使用`MOV CR0`更改PG标志位，关闭分页机制
+- 更改`CR4`寄存器的`PAE`控制位，开启物理地址扩展功能
+- 将页目录的物理基地址加载到`CR3`寄存器中
+- 置位`IA32_EFER`寄存器的`LME`标志位，开启`IA-32e`模式
+- 重新开始分页机制
+
+
+
+### IA-32e模式的GDT表
+
+```assembly
+[SECTION gdt64]
+
+LABEL_GDT64:		dq	0x0000000000000000
+LABEL_DESC_CODE64:	dq	0x0020980000000000
+LABEL_DESC_DATA64:	dq	0x0000920000000000
+
+GdtLen64	equ	$ - LABEL_GDT64
+GdtPtr64	dw	GdtLen64 - 1
+		dd	LABEL_GDT64
+
+SelectorCode64	equ	LABEL_DESC_CODE64 - LABEL_GDT64
+SelectorData64	equ	LABEL_DESC_DATA64 - LABEL_GDT64
+```
+
+
+
+和上面基本一样
+
+
+
+### 调用函数，检测是否支持IA-32e模式
+
+```assembly
+[SECTION .s32]
+[BITS 32]
+
+GO_TO_TMP_Protect:
+
+;=======	go to tmp long mode
+
+	mov	ax,	0x10
+	mov	ds,	ax
+	mov	es,	ax
+	mov	fs,	ax
+	mov	ss,	ax
+	mov	esp,	7E00h
+
+	call	support_long_mode
+	test	eax,	eax
+
+	jz	no_support
+```
+
+这里会调用函数`support_long_mode`，检测是否支持`IA-32e`模式，如果支持的话，就会继续运行，进行切换，如果不支持的话，那么就会跳转到`no_support`进行处理。
+
+
+
+如果不支持，就直接挂起，如下：
+
+```assembly
+;=======	no support
+
+no_support:
+	jmp	$
+```
+
+
+
+### 检测是否支持long_mode的函数：
+
+```assembly
+;=======	test support long mode or not
+
+support_long_mode:
+
+	mov	eax,	0x80000000
+	cpuid
+	cmp	eax,	0x80000001
+	setnb	al	
+	jb	support_long_mode_done
+	mov	eax,	0x80000001
+	cpuid
+	bt	edx,	29
+	setc	al
+support_long_mode_done:
+	
+	movzx	eax,	al
+	ret
+
+```
+
+
+
+这个程序的大概意思就是检查cpuid，如果这个号码大于等于`0x80000001`就说明可以支持`long_mode`，那么我们就直接跳转到`support_long_mode_done`，如果不行的话，需要检查这个号码的第29位，如果29位符合预期，那么说明也是可以支持的，否则就不行。
+
+这个具体的我也没去了解了，因为这个就更像是`cpu`在制作的时候的一些约定俗成的东西，去了解起来比较费劲，而且没有太大意义。
+
+
+
+### 为IA-32e模式配置临时页目录和页表项
+
+```assembly
+;=======	init temporary page table 0x90000
+
+	mov	dword	[0x90000],	0x91007
+	mov	dword	[0x90004],	0x00000
+	mov	dword	[0x90800],	0x91007
+	mov	dword	[0x90804],	0x00000
+
+	mov	dword	[0x91000],	0x92007
+	mov	dword	[0x91004],	0x00000
+
+	mov	dword	[0x92000],	0x000083
+	mov	dword	[0x92004],	0x000000
+
+	mov	dword	[0x92008],	0x200083
+	mov	dword	[0x9200c],	0x000000
+
+	mov	dword	[0x92010],	0x400083
+	mov	dword	[0x92014],	0x000000
+
+	mov	dword	[0x92018],	0x600083
+	mov	dword	[0x9201c],	0x000000
+
+	mov	dword	[0x92020],	0x800083
+	mov	dword	[0x92024],	0x000000
+
+	mov	dword	[0x92028],	0xa00083
+	mov	dword	[0x9202c],	0x000000
+
+```
+
+我们这里就不去探究这个玩意的细节了，后面我们会详细的看这块的。
+
+
+
+### 重新加载全局描述表GDT
+
+```assembly
+;=======	load GDTR
+
+	db	0x66
+	lgdt	[GdtPtr64]
+	mov	ax,	0x10
+	mov	ds,	ax
+	mov	es,	ax
+	mov	fs,	ax
+	mov	gs,	ax
+	mov	ss,	ax
+
+	mov	esp,	7E00h
+```
+
+这个也是和进入保护模式一抹一样的
+
+
+
+### 开启cr4寄存器的PAE标识位、设置CR3控制寄存器
+
+```assembly
+;=======	open PAE
+
+	mov	eax,	cr4
+	bts	eax,	5
+	mov	cr4,	eax
+
+;=======	load	cr3
+
+	mov	eax,	0x90000
+	mov	cr3,	eax
+```
+
+别问我为什么讲的不仔细，问就是没学会（能看得懂汇编，但是不懂intel家的cpu）
+
+
+
+### 开启长模式（IA-32e），操作CR0
+
+```assembly
+;=======	enable long-mode
+
+	mov	ecx,	0C0000080h		;IA32_EFER
+	rdmsr
+
+	bts	eax,	8
+	wrmsr
+
+;=======	open PE and paging
+
+	mov	eax,	cr0
+	bts	eax,	0
+	bts	eax,	31
+	mov	cr0,	eax
+```
+
+
+
+### 从loader跳转到内核程序
+
+```assembly
+jmp	SelectorCode64:OffsetOfKernelFile
+```
+
+这里我会了，就像是刚才从实模式跳转到现在的保护模式一样，我们将处理器的状态进行切换后，运行的程序，仍然是上一状态的程序，这种状态就叫做兼容模式，比如：32位状态下运行16位程序，再比如现在的64位下运行32位程序。所以我们还是要用一条远跳转指令，来真正的切换到`IA-32e`模式下运行程序。
+
+
+
+### 验证
+
+
+
+老规矩，我们执行完后输入`sreg`查看寄存器状态：
+
+```assembly
+es:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
+        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
+cs:0xf000, dh=0xff0093ff, dl=0x0000ffff, valid=7
+        Data segment, base=0xffff0000, limit=0x0000ffff, Read/Write, Accessed
+ss:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
+        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
+ds:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
+        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
+fs:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
+        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
+gs:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
+        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
+ldtr:0x0000, dh=0x00008200, dl=0x0000ffff, valid=1
+tr:0x0000, dh=0x00008b00, dl=0x0000ffff, valid=1
+gdtr:base=0x00000000, limit=0xffff
+idtr:base=0x00000000, limit=0xffff
+```
+
+
+
+然后输入`quit`退出，查看模式
+
+```assembly
+<bochs:3> quit
+00409133580i[      ] dbg: Quit
+00409133580i[CPU0  ] CPU is in protected mode (active)
+00409133580i[CPU0  ] CS.mode = 32 bit
+00409133580i[CPU0  ] SS.mode = 32 bit
+00409133580i[CPU0  ] EFER   = 0x00000000
+00409133580i[CPU0  ] | EAX=00000000  EBX=00000000  ECX=00000000  EDX=00000000
+00409133580i[CPU0  ] | ESP=00007e00  EBP=000008ef  ESI=00008098  EDI=0000bd00
+00409133580i[CPU0  ] | IOPL=0 id vip vif ac vm rf nt of df if tf sf ZF af PF cf
+00409133580i[CPU0  ] | SEG sltr(index|ti|rpl)     base    limit G D
+00409133580i[CPU0  ] |  CS:0008( 0001| 0|  0) 00000000 ffffffff 1 1
+00409133580i[CPU0  ] |  DS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
+00409133580i[CPU0  ] |  SS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
+00409133580i[CPU0  ] |  ES:0010( 0002| 0|  0) 00000000 ffffffff 1 1
+00409133580i[CPU0  ] |  FS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
+00409133580i[CPU0  ] |  GS:b800( 0005| 0|  0) 000b8000 0000ffff 0 0
+00409133580i[CPU0  ] | EIP=000104a8 (000104a8)
+00409133580i[CPU0  ] | CR0=0x60000011 CR2=0x00000000
+00409133580i[CPU0  ] | CR3=0x00000000 CR4=0x00000000
+(0).[409133580] [0x0000000104a8] 0008:000104a8 (unk. ctxt): jmp .-2 (0x000104a8)      ; ebfe
+00409133580i[CMOS  ] Last time is 1602838654 (Fri Oct 16 16:57:34 2020)
+00409133580i[XGUI  ] Exit
+00409133580i[SIM   ] quit_sim called with exit code 0
+```
+
