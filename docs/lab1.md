@@ -2181,27 +2181,29 @@ jmp	SelectorCode64:OffsetOfKernelFile
 
 ### 验证
 
-
+在`0x100000`打断点
 
 老规矩，我们执行完后输入`sreg`查看寄存器状态：
 
 ```assembly
-es:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
-        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
-cs:0xf000, dh=0xff0093ff, dl=0x0000ffff, valid=7
-        Data segment, base=0xffff0000, limit=0x0000ffff, Read/Write, Accessed
-ss:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
-        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
-ds:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
-        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
-fs:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
-        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
-gs:0x0000, dh=0x00009300, dl=0x0000ffff, valid=7
-        Data segment, base=0x00000000, limit=0x0000ffff, Read/Write, Accessed
+<bochs:3> sreg
+es:0x0010, dh=0x00009300, dl=0x00000000, valid=1
+	Data segment, base=0x00000000, limit=0x00000000, Read/Write, Accessed
+cs:0x0008, dh=0x00209900, dl=0x00000000, valid=1
+	Code segment, base=0x00000000, limit=0x00000000, Execute-Only, Non-Conforming, Accessed, 64-bit
+ss:0x0010, dh=0x00009300, dl=0x00000000, valid=1
+	Data segment, base=0x00000000, limit=0x00000000, Read/Write, Accessed
+ds:0x0010, dh=0x00009300, dl=0x00000000, valid=1
+	Data segment, base=0x00000000, limit=0x00000000, Read/Write, Accessed
+fs:0x0010, dh=0x00009300, dl=0x00000000, valid=1
+	Data segment, base=0x00000000, limit=0x00000000, Read/Write, Accessed
+gs:0x0010, dh=0x00009300, dl=0x00000000, valid=1
+	Data segment, base=0x00000000, limit=0x00000000, Read/Write, Accessed
 ldtr:0x0000, dh=0x00008200, dl=0x0000ffff, valid=1
 tr:0x0000, dh=0x00008b00, dl=0x0000ffff, valid=1
-gdtr:base=0x00000000, limit=0xffff
-idtr:base=0x00000000, limit=0xffff
+gdtr:base=0x0000000000010060, limit=0x17
+idtr:base=0x0000000000000000, limit=0x3ff
+
 ```
 
 
@@ -2209,28 +2211,74 @@ idtr:base=0x00000000, limit=0xffff
 然后输入`quit`退出，查看模式
 
 ```assembly
-<bochs:3> quit
-00409133580i[      ] dbg: Quit
-00409133580i[CPU0  ] CPU is in protected mode (active)
-00409133580i[CPU0  ] CS.mode = 32 bit
-00409133580i[CPU0  ] SS.mode = 32 bit
-00409133580i[CPU0  ] EFER   = 0x00000000
-00409133580i[CPU0  ] | EAX=00000000  EBX=00000000  ECX=00000000  EDX=00000000
-00409133580i[CPU0  ] | ESP=00007e00  EBP=000008ef  ESI=00008098  EDI=0000bd00
-00409133580i[CPU0  ] | IOPL=0 id vip vif ac vm rf nt of df if tf sf ZF af PF cf
-00409133580i[CPU0  ] | SEG sltr(index|ti|rpl)     base    limit G D
-00409133580i[CPU0  ] |  CS:0008( 0001| 0|  0) 00000000 ffffffff 1 1
-00409133580i[CPU0  ] |  DS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-00409133580i[CPU0  ] |  SS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-00409133580i[CPU0  ] |  ES:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-00409133580i[CPU0  ] |  FS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-00409133580i[CPU0  ] |  GS:b800( 0005| 0|  0) 000b8000 0000ffff 0 0
-00409133580i[CPU0  ] | EIP=000104a8 (000104a8)
-00409133580i[CPU0  ] | CR0=0x60000011 CR2=0x00000000
-00409133580i[CPU0  ] | CR3=0x00000000 CR4=0x00000000
-(0).[409133580] [0x0000000104a8] 0008:000104a8 (unk. ctxt): jmp .-2 (0x000104a8)      ; ebfe
-00409133580i[CMOS  ] Last time is 1602838654 (Fri Oct 16 16:57:34 2020)
-00409133580i[XGUI  ] Exit
-00409133580i[SIM   ] quit_sim called with exit code 0
+<bochs:4> q
+00015798142i[      ] dbg: Quit
+00015798142i[CPU0  ] CPU is in long mode (active)
+00015798142i[CPU0  ] CS.mode = 64 bit
+00015798142i[CPU0  ] SS.mode = 64 bit
+00015798142i[CPU0  ] EFER   = 0x00000500
+00015798142i[CPU0  ] | RAX=00000000e0000011  RBX=0000000000000000
+00015798142i[CPU0  ] | RCX=00000000c0000080  RDX=0000000000000000
+00015798142i[CPU0  ] | RSP=0000000000007e00  RBP=00000000000008ef
+00015798142i[CPU0  ] | RSI=0000000000008098  RDI=000000000000bd00
+00015798142i[CPU0  ] |  R8=0000000000000000   R9=0000000000000000
+00015798142i[CPU0  ] | R10=0000000000000000  R11=0000000000000000
+00015798142i[CPU0  ] | R12=0000000000000000  R13=0000000000000000
+00015798142i[CPU0  ] | R14=0000000000000000  R15=0000000000000000
+00015798142i[CPU0  ] | IOPL=0 id vip vif ac vm rf nt of df if tf sf zf af pf cf
+00015798142i[CPU0  ] | SEG sltr(index|ti|rpl)     base    limit G D
+00015798142i[CPU0  ] |  CS:0008( 0001| 0|  0) 00000000 00000000 0 0
+00015798142i[CPU0  ] |  DS:0010( 0002| 0|  0) 00000000 00000000 0 0
+00015798142i[CPU0  ] |  SS:0010( 0002| 0|  0) 00000000 00000000 0 0
+00015798142i[CPU0  ] |  ES:0010( 0002| 0|  0) 00000000 00000000 0 0
+00015798142i[CPU0  ] |  FS:0010( 0002| 0|  0) 00000000 00000000 0 0
+00015798142i[CPU0  ] |  GS:0010( 0002| 0|  0) 00000000 00000000 0 0
+00015798142i[CPU0  ] |  MSR_FS_BASE:0000000000000000
+00015798142i[CPU0  ] |  MSR_GS_BASE:0000000000000000
+00015798142i[CPU0  ] | RIP=0000000000100000 (0000000000100000)
+00015798142i[CPU0  ] | CR0=0xe0000011 CR2=0x0000000000000000
+00015798142i[CPU0  ] | CR3=0x00090000 CR4=0x00000020
+(0).[15798142] [0x000000100000] 0008:0000000000100000 (unk. ctxt): jmp .+1229783165 (0x00000000495d0082) ; e97d004d49
+00015798142i[CMOS  ] Last time is 1602867948 (Sat Oct 17 01:05:48 2020)
+00015798142i[XGUI  ] Exit
+00015798142i[SIM   ] quit_sim called with exit code 0
+
 ```
+
+
+
+这里的`0015798142i[CPU0  ] CPU is in long mode (active)`显示我们退出时，是长模式，也就是`IA-32e`模式。
+
+
+
+### 可能存在的问题
+
+#### 假的kernel从哪里来的
+
+有两种方法：
+
+- 第一种是从作者的下一阶段代码中直接编译生成
+- 第二种是从将我们的`loader.bin`复制一份，改名叫做`kernel.bin`
+
+我使用的方法是第二种。
+
+
+
+#### 无法进入长模式
+
+我出现了一个巨大的、无法debug的问题，我找了非长久的问题（是因为我的代码根本没有问题），最后发现自己的虚拟机安装有误。
+
+我们在安装`bochs`的时候，需要使用`config`进行配置，给大家分享一个可用的配制方法：
+
+```shell
+./configure --with-x11 --with-wx --enable-debugger --enable-disasm --enable-all-optimizations --enable-readline --enable-long-phy-address --enable-ltdl-install --enable-idle-hack --enable-plugins --enable-a20-pin --enable-x86-64 --enable-smp --enable-cpu-level=6 --enable-large-ramfile --enable-repeat-speedups --enable-fast-function-calls  --enable-handlers-chaining --enable-trace-linking --enable-configurable-msrs --enable-show-ips --enable-cpp --enable-debugger-gui --enable-iodebug --enable-logging --enable-assert-checks --enable-fpu --enable-vmx=2 --enable-svm --enable-3dnow --enable-alignment-check  --enable-monitor-mwait --enable-avx  --enable-evex --enable-x86-debugger --enable-pci --enable-voodoo
+```
+
+这里在作者给出的配制方法上，去除了enable-usb（加上这个我会报错，就暂时不加了）
+
+
+
+总体来说，我们需要先进入bochs源代码目录，输入：`sudo make uninstall`来卸载原来装的东西，然后再从新配置安装。我猜测，之前无法进入长模式是因为我没有选择：`--enable-x86-64`，所以我的虚拟机只有32位功能。
+
+
 
