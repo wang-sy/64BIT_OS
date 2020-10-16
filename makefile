@@ -17,7 +17,7 @@ install:
 	sudo cp $(BOOT_BUILD_DIR)/kernel.bin /media
 	sync
 	sudo umount /media/
-	echo 挂载完成，请进入build文件夹后输入"bochs -f ./bochsrc"以启动虚拟机
+	echo 挂载完成，请进入build文件夹后输入"bochs"以启动虚拟机
 
 clean:
 	cd $(SUBDIRS) && $(MAKE) clean

@@ -1,22 +1,7 @@
-;/***************************************************
-;		版权声明
-;
-;	本操作系统名为：MINE
-;	该操作系统未经授权不得以盈利或非盈利为目的进行开发，
-;	只允许个人学习以及公开交流使用
-;
-;	代码最终所有权及解释权归田宇所有；
-;
-;	本模块作者：	田宇
-;	EMail:		345538255@qq.com
-;
-;
-;***************************************************/
-
 org	10000h
 	jmp	Label_Start
 
-%include	"fat12.inc"
+%include	"fat12.inc" ; 在同文件夹下
 
 BaseOfKernelFile	equ	0x00
 OffsetOfKernelFile	equ	0x100000
@@ -26,7 +11,7 @@ OffsetTmpOfKernelFile	equ	0x7E00
 
 MemoryStructBufferAddr	equ	0x7E00
 
-[SECTION gdt]
+[SECTION gdt] ; 32位下的GDT表
 
 LABEL_GDT:		dd	0,0
 LABEL_DESC_CODE32:	dd	0x0000FFFF,0x00CF9A00
@@ -39,7 +24,7 @@ GdtPtr	dw	GdtLen - 1
 SelectorCode32	equ	LABEL_DESC_CODE32 - LABEL_GDT
 SelectorData32	equ	LABEL_DESC_DATA32 - LABEL_GDT
 
-[SECTION gdt64]
+[SECTION gdt64]; 64位下的GDT表
 
 LABEL_GDT64:		dq	0x0000000000000000
 LABEL_DESC_CODE64:	dq	0x0020980000000000
@@ -64,7 +49,7 @@ Label_Start:
 	mov	ss,	ax
 	mov	sp,	0x7c00
 
-;=======	display on screen : Start Loader......
+;=======	在屏幕上显示 : Start Loader......
 
 	mov	ax,	1301h
 	mov	bx,	000fh
@@ -77,7 +62,7 @@ Label_Start:
 	mov	bp,	StartLoaderMessage
 	int	10h
 
-;=======	open address A20
+;=======	开启A20模式
 	push	ax
 	in	al,	92h
 	or	al,	00000010b
@@ -101,13 +86,13 @@ Label_Start:
 
 	sti
 
-;=======	reset floppy
+;=======	重置 软盘
 
 	xor	ah,	ah
 	xor	dl,	dl
 	int	13h
 
-;=======	search kernel.bin
+;=======	寻找kernel.bin，和boot中的代码一样
 	mov	word	[SectorNo],	SectorNumOfRootDirStart
 
 Lable_Search_In_Root_Dir_Begin:
@@ -160,7 +145,7 @@ Label_Goto_Next_Sector_In_Root_Dir:
 	add	word	[SectorNo],	1
 	jmp	Lable_Search_In_Root_Dir_Begin
 	
-;=======	display on screen : ERROR:No KERNEL Found
+;=======	如果没有找到，那么就显示 : ERROR:No KERNEL Found
 
 Label_No_LoaderBin:
 
@@ -176,7 +161,7 @@ Label_No_LoaderBin:
 	int	10h
 	jmp	Label_No_LoaderBin
 
-;=======	found loader.bin name in root director struct
+;=======	找到文件后进行的操作
 
 Label_FileName_Found:
 	mov	ax,	RootDirSectors
@@ -271,7 +256,7 @@ KillMotor:
 	out	dx,	al
 	pop	dx
 
-;=======	get memory address size type
+;=======	获取内存的类型及其对应的地址范围
 
 	mov	ax,	1301h
 	mov	bx,	000Fh
@@ -329,7 +314,7 @@ Label_Get_Mem_OK:
 	mov	bp,	GetMemStructOKMessage
 	int	10h	
 
-;=======	get SVGA information
+;=======	获取 SVGA 信息
 
 	mov	ax,	1301h
 	mov	bx,	000Fh
@@ -406,7 +391,7 @@ Label_SVGA_Mode_Info_Get:
 
 	mov	cx,	word	[es:esi]
 
-;=======	display SVGA mode information
+;=======	显示 SVGA mode 信息
 
 	push	ax
 	
@@ -469,7 +454,7 @@ Label_SVGA_Mode_Info_Finish:
 	mov	bp,	GetSVGAModeInfoOKMessage
 	int	10h
 
-;=======	set the SVGA mode(VESA VBE)
+;=======	更改 SVGA 模式(VESA VBE)
 
 	mov	ax,	4F02h
 	mov	bx,	4180h	;========================mode : 0x180 or 0x143
@@ -478,7 +463,7 @@ Label_SVGA_Mode_Info_Finish:
 	cmp	ax,	004Fh
 	jnz	Label_SET_SVGA_Mode_VESA_VBE_FAIL
 
-;=======	init IDT GDT goto protect mode 
+;=======	初始化 IDT GDT 表，从实模式到保护模式
 
 	cli			;======close interrupt
 
@@ -499,7 +484,7 @@ Label_SVGA_Mode_Info_Finish:
 
 GO_TO_TMP_Protect:
 
-;=======	go to tmp long mode
+;=======	进入长模式
 
 	mov	ax,	0x10
 	mov	ds,	ax
@@ -513,7 +498,7 @@ GO_TO_TMP_Protect:
 
 	jz	no_support
 
-;=======	init temporary page table 0x90000
+;=======	初始化页表 0x90000
 
 	mov	dword	[0x90000],	0x91007
 	mov	dword	[0x90004],	0x00000
@@ -541,7 +526,7 @@ GO_TO_TMP_Protect:
 	mov	dword	[0x92028],	0xa00083
 	mov	dword	[0x9202c],	0x000000
 
-;=======	load GDTR
+;=======	读取 GDTR
 
 	db	0x66
 	lgdt	[GdtPtr64]
@@ -554,7 +539,7 @@ GO_TO_TMP_Protect:
 
 	mov	esp,	7E00h
 
-;=======	open PAE
+;=======	打开 PAE 标识位
 
 	mov	eax,	cr4
 	bts	eax,	5
@@ -565,7 +550,7 @@ GO_TO_TMP_Protect:
 	mov	eax,	0x90000
 	mov	cr3,	eax
 
-;=======	enable long-mode
+;=======	打开 long-mode
 
 	mov	ecx,	0C0000080h		;IA32_EFER
 	rdmsr
@@ -573,7 +558,7 @@ GO_TO_TMP_Protect:
 	bts	eax,	8
 	wrmsr
 
-;=======	open PE and paging
+;=======	打开 PE位
 
 	mov	eax,	cr0
 	bts	eax,	0
@@ -582,7 +567,7 @@ GO_TO_TMP_Protect:
 
 	jmp	SelectorCode64:OffsetOfKernelFile
 
-;=======	test support long mode or not
+;=======	检测是否支持长模式，函数，被上面调用
 
 support_long_mode:
 
@@ -600,7 +585,7 @@ support_long_mode_done:
 	movzx	eax,	al
 	ret
 
-;=======	no support
+;=======	如果不支持那就在原地打转
 
 no_support:
 

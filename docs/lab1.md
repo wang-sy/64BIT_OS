@@ -2251,6 +2251,77 @@ idtr:base=0x0000000000000000, limit=0x3ff
 
 
 
+### makefile文件
+
+最后来分享下我的`makefile`，首先是boot文件夹下的`makefile`：
+
+```makefile
+
+all: boot.bin loader.bin kernel.bin
+
+boot.bin: 
+# 生成boot的bin文件
+	nasm boot.asm -o ./build/boot.bin 
+
+loader.bin: fat12.inc
+# 生成loader的bin文件
+	nasm loader.asm -o ./build/loader.bin
+
+kernel.bin: loader.bin
+	cp ./build/loader.bin ./build/kernel.bin
+
+clean:
+# 清除
+	rm -rf ./build/*
+```
+
+
+
+总的`makefile`：
+
+```makefile
+BOOT_SRC_DIR=./src/boot
+SUBDIRS=$(BOOT_SRC_DIR)
+
+BOOT_BUILD_DIR=$(BOOT_SRC_DIR)/build
+PROJECT_BUILD_DIR=./build
+
+all: 
+	cd $(BOOT_SRC_DIR) && $(MAKE)
+
+install: 
+# 将boot的bin写入到引导扇区内 
+
+	echo "特别声明：不要删除boot.img，如果删除了， 请到64位操作系统书中36页寻找复原方法"
+	dd if=$(BOOT_BUILD_DIR)/boot.bin of=$(PROJECT_BUILD_DIR)/boot.img bs=512 count=1 conv=notrunc 
+	sudo mount $(PROJECT_BUILD_DIR)/boot.img /media/ -t vfat -o loop
+	sudo cp $(BOOT_BUILD_DIR)/loader.bin /media
+	sudo cp $(BOOT_BUILD_DIR)/kernel.bin /media
+	sync
+	sudo umount /media/
+	echo 挂载完成，请进入build文件夹后输入"bochs"以启动虚拟机
+
+clean:
+	cd $(SUBDIRS) && $(MAKE) clean
+
+```
+
+
+
+使用方法：
+
+```shell
+# 在根目录进行：
+make clean && make 
+sudo make install
+cd build
+bochs
+```
+
+
+
+
+
 ### 可能存在的问题
 
 #### 假的kernel从哪里来的
