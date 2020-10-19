@@ -1,11 +1,19 @@
 BOOT_SRC_DIR=./src/boot
-SUBDIRS=$(BOOT_SRC_DIR)
+KERNEL_SRC_DIR=./src/kernel
+SUBDIRS=$(BOOT_SRC_DIR) $(KERNEL_SRC_DIR)
 
+define \n # 定义换行符，下面要用
+
+
+endef
 BOOT_BUILD_DIR=$(BOOT_SRC_DIR)/build
+KERNEL_BUILD_DIR=$(KERNEL_SRC_DIR)/build
 PROJECT_BUILD_DIR=./build
 
 all: 
-	cd $(BOOT_SRC_DIR) && $(MAKE)
+# 遍历每一个文件夹，进行编译
+	$(foreach dir, $(SUBDIRS), cd $(dir) && $(MAKE) ${\n})
+
 
 install: 
 # 将boot的bin写入到引导扇区内 
@@ -20,4 +28,5 @@ install:
 	echo 挂载完成，请进入build文件夹后输入"bochs"以启动虚拟机
 
 clean:
-	cd $(SUBDIRS) && $(MAKE) clean
+# 遍历每一个文件夹，进行删除
+	$(foreach dir, $(SUBDIRS), cd $(dir) && $(MAKE) clean ${\n})
