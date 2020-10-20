@@ -345,3 +345,344 @@ cd $(dir) && $(MAKE) ${\n}
 
 意思就是进入文件夹、执行make、输出换行，之所以输出换行，是因为makefile中的cd仅在当前行有效，也就是说，我们换行就相当于回到主文件夹下重新执行了，这样就可以完成循环进入所有子文件夹，执行make的操作。
 
+
+
+
+
+## 内核主程序
+
+简单回顾一下，我们在上个小节中完成了三个表的声明与数据填充，并且重新进行了`IA-32e`模式的初始化，在内核执行头程序的最后，跳转到了`Start_Kernel`函数，这个`Start_Kernel`函数就是这一节我们想要介绍的内核主程序的主体。一般情况下，它将负责调各个系统模块的初始化函数，在初始化结束后，他会创建出系统的第一个进程`init`，并且将控制权交给`init`进程。
+
+
+
+当然了，在这一个小节中，我们只是写一个“假的”内核主程序，在之后的其他小节中，我们会继续完善它。这一节主要讲解怎么去编译、链接它。
+
+
+
+### 写一个“假的”内核主程序
+
+
+
+这个就很脑瘫了，我们只要写一个含有`Start_Kernel`函数的程序即可，这里是`main.c`：(终于见到亲切的高级语言了)
+
+```C
+// 内核主程序，执行完内核执行头程序后会跳转到Start_Kernel函数中
+void Start_Kernel() {
+	while(1){
+        ;
+    }
+}
+```
+
+这里我们就让他原地空转（死循环），接下来我们讨论如何编译它的问题。
+
+
+
+### 编译内核主程序
+
+这里我们继续完善我们的`makefile`文件，在此之前我们来完整的看一下当前的文件夹结构（之前从来没介绍过，大家可能看我的makefile的时候会很懵逼）：
+
+```
+64BIT_OS 
+├─ README.md : 项目描述文件
+├─ build ：整个项目生成的可执行空间， 在这个文件夹下执行bochs就可以直接打开生成好的虚拟机
+│  ├─ .bochsrc ：虚拟机的描述文件
+│  └─ boot.img ：虚拟机的镜像文件
+├─ docs ：这个文档所在的文件夹，用于存储文档以及文档中用到的图片
+├─ makefile ： 整个项目的make脚本
+└─ src ：源码目录
+   ├─ boot：bootloader模块
+   │  ├─ boot.asm ：boot
+   │  ├─ build ：bootloader模块编译生成的文件都存储在这里
+   │  ├─ fat12.inc ：被%include的东西
+   │  ├─ loader.asm ：loader
+   │  └─ makefile ：bootloader模块的makefile文件，该脚本生成的文件都放在boot\biuild文件夹下
+   └─ kernel：内核模块
+      ├─ build ：kernel模块编译生成的文件都存储在这里
+      ├─ head.S
+      ├─ main.c
+      └─ makefile ： 内核的make脚本
+```
+
+
+
+这里我们继续完善的是`kernel/makefile`。在自己写之前，我们先来了解一下一个编译器在编译一个文件的时候执行的操作，为了完整的演示整个过程，我们再写一套专门用来演示的程序：（当然，你可以不看着一部分，这一部分只是为了让你深刻理解gcc编译器在编译一段程序的完整过程中会干些什么）
+
+#### 演示程序
+
+`temp.h`
+
+```c
+int a = 1;
+int b = 2;
+int c = 3;
+
+```
+
+`temp.c`
+
+```C
+
+
+
+
+
+#include "temp.h"
+
+
+int main() {
+        a = b + 1;
+}
+```
+
+
+
+这里我们使用`gcc temp.c`就会生成一个可执行文件`a.out`，执行`a.out`时什么都不会输出，因为我们没有让这个程序输出。
+
+
+
+#### 编译过程
+
+- 预编译：我们在控制台执行指令`gcc -E temp.c -o temp.i`表示执行预编译，并且指定输出文件为`temp.i`，完成后打开`temp.i`查看：
+
+  ```C
+  # 1 "temp.c"
+  # 1 "<built-in>"
+  # 1 "<command-line>"
+  # 1 "/usr/include/stdc-predef.h" 1 3 4
+  # 1 "<command-line>" 2
+  # 1 "temp.c"
+  
+  
+  
+  
+  
+  # 1 "temp.h" 1
+  int a = 1;
+  int b = 2;
+  int c = 3;
+  # 7 "temp.c" 2
+  
+  
+  int main() {
+   a = b + 1;
+  }
+  
+  ```
+
+  可以看到，这里生成了一个文件，这个文件的实质就是把`temp.h`中的内容复制了进来。
+
+- 汇编：继续执行`gcc -S temp.i -o temp.s`：
+
+  ```gas
+          .file   "temp.c"
+          .text
+          .globl  a
+          .data
+          .align 4
+          .type   a, @object
+          .size   a, 4
+  a:
+          .long   1
+          .globl  b
+          .align 4
+          .type   b, @object
+          .size   b, 4
+  b:
+          .long   2
+          .globl  c
+          .align 4
+          .type   c, @object
+          .size   c, 4
+  c:
+          .long   3
+          .text
+          .globl  main
+                            
+  main:
+  .LFB0:
+          .cfi_startproc
+          endbr64
+          pushq   %rbp
+          .cfi_def_cfa_offset 16
+          .cfi_offset 6, -16
+          movq    %rsp, %rbp
+          .cfi_def_cfa_register 6
+          movl    b(%rip), %eax
+          addl    $1, %eax
+          movl    %eax, a(%rip)
+          movl    $0, %eax
+          popq    %rbp
+          .cfi_def_cfa 7, 8
+          ret
+          .cfi_endproc
+  .LFE0:
+          .size   main, .-main
+          .ident  "GCC: (Ubuntu 9.3.0-17ubuntu1~20.04) 9.3.0"
+          .section        .note.GNU-stack,"",@progbits
+          .section        .note.gnu.property,"a"
+          .align 8
+          .long    1f - 0f
+          .long    4f - 1f
+          .long    5
+  0:
+          .string  "GNU"
+  1:
+          .align 8
+          .long    0xc0000002
+          .long    3f - 2f
+  2:
+          .long    0x3
+  3:
+          .align 8
+  4:
+  
+  ```
+
+  这里生成了我们非常眼熟的`gas`汇编语言。
+
+- 生成编译好但没有连接的文件：`gcc - c temp.s -o temp.o`
+
+  这里生成的是一个二进制文件，打开它来看没啥意义
+
+- 链接：`gcc temp.o -o temp`：
+
+  ```shell
+  $ ./temp
+  
+  ```
+
+  当然，执行他还是啥都不会发生，但是能够执行
+
+到此为止，我们就把整个流程走了一遍了，相信大家都大致理解了编译的过程。
+
+
+
+#### 应用到项目中
+
+回想一下我们要做的事情：先编译`main.c`，然后再让他按照我们的想法链接，于是我们就要先编译一下`main.c`，即在`makefile`中添加：
+
+```makefile
+main.o: main.c
+# 编译main.c内核主程序
+	gcc -mcmodel=large -fno-builtin -m64 -c main.c -o ./build/main.o
+```
+
+接下来我们指定链接脚本，并且进行链接：
+
+```makefile
+system: head.o main.o
+	ld -b elf64-x86-64 -o ./build/system ./build/head.o ./build/main.o -T Kernel.lds
+```
+
+这句的意思就是链接`head.o\main.o`两个文件，指定输入的文件类型是`efl64-x86-64`，并且指定了链接脚本是`Kernel.lds`。
+
+我们这里也新建一个链接脚本：
+
+```shell
+OUTPUT_FORMAT("elf64-x86-64","elf64-x86-64","elf64-x86-64")
+OUTPUT_ARCH(i386:x86-64)
+ENTRY(_start)
+SECTIONS
+{
+
+        . = 0xffff800000000000 + 0x100000;
+        .text :
+        {
+                _text = .;
+                *(.text)
+
+                _etext = .;
+        }
+        . = ALIGN(8);
+        .data :
+        {
+                _data = .;
+                *(.data)
+
+                _edata = .;
+        }
+        .bss :
+        {
+                _bss = .;
+                *(.bss)
+                _ebss = .;
+        }
+
+        _end = .;
+}
+```
+
+这段脚本非常简单：
+
+- `OUTPUT_FORMAT`：指定输出的文件类型（和输入一样）
+- `OUTPUT_ARCH`：指定输出的体系结构
+- `ENTRY`：指定程序的入口（开始执行的地方）
+- `SECTIONS`：指定了程序被加载到哪里，每个段的相对关系以及对齐位置
+
+
+
+相应的，`all`也不再依赖`head.o/main.o`了，而是转而依赖`system`即可，之后还需要添加：
+
+```makefile
+all: system
+# 生成kernel.bin
+	objcopy -I elf64-x86-64 -S -R ".eh_frame" -R ".comment" -O binary ./build/system ./build/kernel.bin
+```
+
+这里使用了`objcopy`生成了`kernel.bin`，这里我们就生成了`真·内核`，所以我们就把上一章中的假内核删掉就可以了。我们要做出于以下改变：
+
+- 将boot文件夹下的makefile中生成kernel.bin的语句和依赖删除（自己删，或者看我的源码，这里就不啰嗦了，非常简单）
+
+- 更改主文件夹下拷贝`kernel.bin`的语句（说白了就是把copy的源改一下就可以了）：
+
+  ```makefile
+  sudo cp $(KERNEL_BUILD_DIR)/kernel.bin /media
+  ```
+
+  
+
+#### 简单验证
+
+我们要验证一下到此为止是否正确执行，这里我们使用反汇编指令：
+
+```shell
+objdump -D system
+```
+
+找到`Start Kernel`部分
+
+```gas
+ffff80000010400c:       48 8d 05 f5 ff ff ff    lea    -0xb(%rip),%rax        # ffff800000104008 <Start_Kernel+0x8>
+ffff800000104013:       49 bb 68 11 00 00 00    movabs $0x1168,%r11
+ffff80000010401a:       00 00 00 
+ffff80000010401d:       4c 01 d8                add    %r11,%rax
+ffff800000104020:       eb fe                   jmp    ffff800000104020 <Start_Kernel+0x20>
+```
+
+这里就标记出了while语句的线性地址`ffff800000104020`
+
+```shell
+^C00156063365i[      ] Ctrl-C detected in signal handler.
+Next at t=156063366
+(0) [0x000000104020] 0008:ffff800000104020 (unk. ctxt): jmp .-2 (0xffff800000104020) ; ebfe
+<bochs:2> r
+CPU0:
+rax: ffff8000_00105170 rcx: 00000000_c0000080
+rdx: 00000000_00000000 rbx: 00000000_00000000
+rsp: ffff8000_00007df8 rbp: ffff8000_00007df8
+rsi: 00000000_00008098 rdi: 00000000_0000bd00
+r8 : 00000000_00000000 r9 : 00000000_00000000
+r10: 00000000_00000000 r11: 00000000_00001168
+r12: 00000000_00000000 r13: 00000000_00000000
+r14: 00000000_00000000 r15: 00000000_00000000
+rip: ffff8000_00104020
+eflags 0x00000092: id vip vif ac vm rf nt IOPL=0 of df if tf SF zf AF pf cf
+```
+
+RIP寄存器存放着当前指令的地址，这里指示的正是当前的跳转指令，也就是说程序已经进入了死循环，验证结果为正确。
+
+
+
+
+
