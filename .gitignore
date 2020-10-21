@@ -2,4 +2,6 @@
 *.o
 *.bin
 *.s
+run.sh
+.idea
 system

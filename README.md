@@ -4,6 +4,7 @@
 
 项目进度：
 - bootloder：[相关文档](./docs/lab1.md)
+- kernel：[相关文档](./docs/lab2.md)
 
 ```
 64BIT_OS

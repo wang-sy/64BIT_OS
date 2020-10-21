@@ -1,8 +1,8 @@
 BOOT_SRC_DIR=./src/boot
 KERNEL_SRC_DIR=./src/kernel
 SUBDIRS=$(BOOT_SRC_DIR) $(KERNEL_SRC_DIR)
-
-define \n # 定义换行符，下面要用
+# 定义换行符，下面要用
+define \n
 
 
 endef
