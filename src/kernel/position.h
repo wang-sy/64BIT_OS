@@ -2,8 +2,6 @@
 #ifndef __POSITION_H__
 #define __POSITION_H__
 
-#include "font.h"
-
 
 struct position
 {
@@ -18,7 +16,11 @@ struct position
 
     unsigned int * FB_addr; // 显示缓冲区的首地址
     unsigned long FB_length; // 显示缓冲区的长度
-}Pos;
+}globalPosition;
+
+/*引入本头文件时自动引入本变量*/
+extern struct position globalPosition;
+
 
 // 函数，给出一个描述屏幕的结构体，将光标后移一位
 void doNext(struct position * curPos);
@@ -38,6 +40,5 @@ void doClear(struct position * curPos);
 // 函数，给出一个描述屏幕的结构体，以及想要在当前位置输出的文字的背景颜色、文字颜色、文字格式在当前位置进行输出
 void doPrint(struct position * curPos,const int backColor, const int fontColor, const char* charFormat);
 
-char* defaultFill = "                                               ";
 
 #endif

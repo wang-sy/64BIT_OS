@@ -1,4 +1,5 @@
 #include "position.h"
+#include "printk.h"
 
 #define COLOR_OUTPUT_ADDR (int *)0xffff800000a00000
 #define SCREEN_ROW_LEN 900 // 一共有多少行
@@ -6,7 +7,7 @@
 #define CHAR_ROW_LEN 16 // 一个字符一共有多少行
 #define CHAR_COL_LEN 8 // 一个字符一共有多少列
 
-
+extern unsigned char font_ascii[256][16];
 // 画点的方法，给出坐标与颜色，将其覆盖
 void plot_color_point(int x, int y, char r, char g, char b);
 
@@ -38,8 +39,10 @@ void Start_Kernel() {
         }
     }
 
-    // 初始化屏幕
-    struct position* myPos = &(struct position){
+
+    // 初始化与屏幕有关的全局变量
+    struct position* myPos = &globalPosition;
+    (*myPos) = (struct position){
         SCREEN_ROW_LEN, SCREEN_COL_LEN,  // 屏幕行列
         0, 0, // 当前光标位置
         CHAR_ROW_LEN, CHAR_COL_LEN, // 字符行列
@@ -49,12 +52,18 @@ void Start_Kernel() {
     doClear(myPos);
 
     int curChar; 
-    for(curChar = 0; curChar < 256; curChar ++){ // 输出给出的表格中的每一个字符
+    for(curChar = 40; curChar < 130; curChar ++){ // 输出给出的表格中的每一个字符
         doPrint(myPos, 0xffffff00, 0x00000000, font_ascii[curChar]);
         doNext(myPos);
-        if(curChar % 16 == 0) doEnter(myPos);
+        if(curChar % 10 == 0) {
+            if(curChar % 20 == 0) doBackspace(myPos);
+            doEnter(myPos);
+            if(curChar % 30 == 0) doTab(myPos);
+        }
     }
-
+    doEnter(&globalPosition);
+    color_printk(YELLOW,BLACK,"Hello World!");
+    doEnter(&globalPosition);
 	while(1){
         ;
     }

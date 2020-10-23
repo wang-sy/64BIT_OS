@@ -44,7 +44,7 @@
 
 > 内核层的起始线性地址`0xffff800000000000`对应着物理地址`0`处，内核程序的起始线性地址位于`0xffff800000000000 + 0x100000`。
 
-<img src="http://www.ituring.com.cn/figures/2019/OperatingSystemx64/05.d04z.001.png" alt="img" style="zoom:33%;" />
+<img src="pics/lab2/05.d04z.001.png" alt="img" style="zoom:33%;" />
 
 
 
@@ -720,7 +720,7 @@ bochs
 
 首先，我们需要了解屏幕的布局：
 
-<img src="http://www.ituring.com.cn/figures/2019/OperatingSystemx64/05.d04z.002.png" alt="img" style="zoom:33%;" />
+<img src="pics/lab2/05.d04z.002.png" alt="img" style="zoom:33%;" />
 
 我们的坐标系是从左上角为原点的。
 
@@ -796,7 +796,7 @@ void plot_color_point(int x,int y, char r, char g, char b){
 
 我们将在屏幕上画一个点的方法进行封装，我们只需要给出需要绘画的点的横纵坐标以及rgb值即可进行绘图。绘图的方法也非常简单且暴力，就是直接覆盖对应的内存区域。在主程序中，我们多次调用这个方法进行绘图，绘出了四个不同颜色的矩形，效果如下：
 
-<img src="/home/wangsy/Code/64BIT_OS/docs/pics/lab2/image-20201020163850427.png" alt="image-20201020163850427" style="zoom: 50%;" />
+<img src="./pics/lab2/image-20201020163850427.png" alt="image-20201020163850427" style="zoom: 50%;" />
 
 
 
@@ -810,7 +810,7 @@ void plot_color_point(int x,int y, char r, char g, char b){
 
 我们都知道，电脑上看到的画面是由一个一个像素点组成的，同理，我们看到的字符也是由很多的像素点组成的，在我们的系统中，一个字符占`16行8列`的空间，如下：
 
-<img src="http://www.ituring.com.cn/figures/2019/OperatingSystemx64/05.d04z.004.png" alt="img" style="zoom:33%;" />
+<img src="pics/lab2/05.d04z.004.png" alt="img" style="zoom:33%;" />
 
 我们使用一个数组来记录每个字符的方块的内容：
 
@@ -837,33 +837,13 @@ unsigned char font_ascii[256][16]=
 
 
 
-### 如何打印一行文字
+### 如何移动光标并且打印文字
 
-在上一段中我们讲了如何在屏幕指定的区域打印一行文字，在知道这样的信息后，我们这一段来关注如何在屏幕上打印一行文字。
-
-
-
-- 首先，我们需要来复现一下使用场景，这里使用我们常用的`printf`函数来做类比：
-
-  ```c
-  printf("numa:%d\n", numa);
-  ```
-
-  我们来解读一下这个句子，首先，这个句子包括两个大的部分，前面是一个字符串，他表示我们最终需要输出的字符串，在这个字符串中，可能会有一些**占位符**，具体来说，这些占位符可能是基础的：`%d, %s, %c`等等，也有可能是`%06d`这种的，当然，除此之外，这个字符串中可能还有一些较为特殊的字符，比如：`\n, \t, \b`这三个，他们分别表示回车、制表符、回退，这三个都无法直接输出，所以我们需要进行特殊的判断。
-  
-  综上所述，我们这个输出一行字的函数可以被拆分为两个阶段：
-  
-  - **预处理**：给出一个格式字符串如`"numa:%d\n"`以及跟随的参数`numa`（这个参数的数量未知），对字符串进行解析，得到一个能够直接进行输出的字符串（相当于直接把后面的参数融合到字符串中）。
-  - **输出**：读取预处理完毕的字符串，逐个字符进行输出，输出到屏幕上
+在上一段中，我们讲了单个字符是如何构成的，有了这个基础，就可以来学习怎么移动光标，并且打印单个文字了。
 
 
 
-#### 总体工作思路
-
-这里我们的解决方案和作者的解决方案有很大的不同，我们采用一种类似于面向对象编程的思想来完成这些操作。我们的整体逻辑可以分为两个大的部分：
-
-- 字符串处理
-- 字符串输出
+#### 使用一个结构体来描述这些功能
 
 在输出字符串的时候，需要对屏幕进行操作（实际上就是对用于显示的缓冲区进行操作），那么这个时候我们就想到了去建立一个"类"来描述这个过程，我们来看一下这个`cursor类`需要描述哪些东西：
 
@@ -883,10 +863,13 @@ unsigned char font_ascii[256][16]=
 
 这是我所想到的，我们的缓冲区需要进行的操作，经过上面的思考后，我们的"类"就有了一个雏形（当然了，C语言没法面向对象，所以我们只能用变量+函数的形式来爽一下了）：（这里我构建了一个程序`position.h`来描述相关的信息）
 
+
+
 ```C
 
 #ifndef __POSITION_H__
 #define __POSITION_H__
+
 
 struct position
 {
@@ -915,19 +898,802 @@ void doBackspace(struct position * curPos);
 // 函数，给出一个描述屏幕的结构体，在当前位置模拟Tab制表符操作（制表符大小为8个空格）
 void doTab(struct position * curPos);
 
+// 函数，给出一个描述屏幕的结构体，清空屏幕上所有的东西，并且将光标置为(0, 0)
+void doClear(struct position * curPos);
+
 // 函数，给出一个描述屏幕的结构体，以及想要在当前位置输出的文字的背景颜色、文字颜色、文字格式在当前位置进行输出
 void doPrint(struct position * curPos,const int backColor, const int fontColor, const char* charFormat);
 
+
 #endif
 ```
+
+#### 各种方法的实现
 
 
 
 接下来我们在`position.c`中，实现这些功能即可：
 
+```C
+#include "position.h"
+
+// 实现position中的一些函数
+char* defaultFill = "                                                                ";
+
+/**
+ * 给出当前的位置结构体，将光标移动到下一区域
+ * @param curPos 一个指针，指向被操作的位置结构体
+ */ 
+void doNext(struct position* curPos){
+    curPos->YPosition = curPos->YPosition + curPos->YCharSize;
+    if(curPos->YPosition >= curPos->YResolution) doEnter(curPos); // 试探，如果错误，就直接重置
+}
+
+/**
+ * 给出当前的位置结构体，模拟回车时的操作
+ * @param curPos 一个指针，指向被操作的位置结构体
+ */ 
+void doEnter(struct position * curPos){
+    curPos->YPosition = 0;
+    curPos->XPosition = curPos->XPosition + curPos->XCharSize; // 平移
+    if(curPos->XPosition >= curPos->XResolution) doClear(curPos); // 试探，如果错误，就直接重置
+}
+
+/**
+ * 给出当前的位置结构体，将光标置为(0, 0)[暂时不实现清空屏幕的功能]
+ * @param curPos 一个指针，指向被操作的位置结构体
+ */ 
+void doClear(struct position * curPos){
+    curPos->XPosition = 0;
+    curPos->YPosition = 0;
+}
+
+/**
+ * 给出当前的位置结构体，以及想要在当前位置输出的文字的背景颜色、文字颜色、文字格式在当前位置进行输出
+ * @param curPos 一个指针，指向被操作的位置结构体
+ * @param backColor 背景颜色
+ * @param fontColor 字体颜色
+ * @param charFormat  字体样式会根据字体样式进行颜色填充
+ */ 
+void doPrint(struct position * curPos,const int backColor, const int fontColor, const char* charFormat){
+    int row, col;
+
+    // 遍历每一个像素块，进行输出
+   for(row = curPos->XPosition; row < curPos->XPosition + curPos->XCharSize; row ++){
+        for(col = curPos->YPosition; col < curPos->YPosition + curPos->YCharSize; col ++){
+            int* pltAddr = curPos->FB_addr + curPos->YResolution * row + col; // 当前方块需要覆盖像素块的缓冲区地址
+            int groupId =  row - curPos->XPosition; //  算出来在第几个char中
+            int memberNum = col - curPos->YPosition; // 算出来在该char中是第几位
+            char isFont = charFormat[groupId] & (1 << (curPos->YCharSize - memberNum)); // 判断该位是否为1
+
+            (*pltAddr) = isFont ? fontColor : backColor; 
+        }
+    }
+    
+    
+}
+
+/**
+ * 给出当前的位置结构体，在当前位置模拟退格键[退格键不会将回车删除（也就是说，无论怎么退格，Y值都不会变）]
+ * @param curPos 一个指针，指向被操作的位置结构体
+ */ 
+void doBackspace(struct position* curPos){
+    // 先在当前位置画一个空格（把之前的字符覆盖掉） 画的时候背景是黑色
+    doPrint(curPos, 0x00000000, 0x00000000, defaultFill);
+
+    // 如果不是行的第一个，那么就减一个空位
+    curPos->YPosition = (curPos->YPosition - curPos->YCharSize <= 0) ? 0 : 
+                        curPos->YPosition - curPos->YCharSize; 
+}
+
+/**
+ * 给出当前的位置结构体，在当前位置模拟输入一次制表符
+ * 这里无论如何都要做一次，然后直到对齐4位为止
+ * @param curPos 一个指针，指向被操作的位置结构体
+ */ 
+void doTab(struct position * curPos){
+    do{
+        doNext(curPos);
+    } while(((curPos->YPosition / curPos->YCharSize) & 4) == 0);
+}
+```
+
+
+
+这里按照惯例，来讲解一下代码，我终于摆脱了copy作者代码的阴影，开始自己创作了，下面我们来简单的讲一下这些函数：
+
+- `doNext`：将位置向后移动一个方格，如果当前位置已经是行末，那么就调用`doEnter()`
+
+- `doEnter`：将位置移动到下一行的行初，如果移动后超出了屏幕，就调用`doClear`
+
+- `doClear`：将位置移动到左上角（暂时没有让他带有清空屏幕的功能）
+
+- `doPrint`：输出一个字符，在执行这个函数的过程中，有几个需要讲解的点：
+
+  - `int* pltAddr = curPos->FB_addr + curPos->YResolution * row + col;`：计算我们要覆盖的屏幕显示缓冲区内存地址。
+
+  - `charFormat[groupId] & (1 << (curPos->YCharSize - memberNum))`：作者给出的字符表是反着的，他实际的作用如下：
+
+    ![](./pics/lab2/figure3.png) 
+
+    实际上就是对比当前位是否为0。
+
+- `doBackspace`将当前的位置用黑色覆盖，然后将位置向前移动一个即可。
+
+- `doTab`：无论何时使用`TAB`的时候，都会向后至少移动一格，基于这个理论，我们使用一个`do-while()`就可以非常容易解决了。后面写的判断，就是一个简易的膜4，对于CPU来说，按位与运算只需要一个时钟周期即可完成，而取余数运算是基于除法运算的，对于64位的cpu而言，最简单的除法操作需要64个时钟周期，就算用华莱士数+both来做优化，也需要让流水线停止等待很久，所以说，对于`2^n`形式的数字进行取余数，可以使用按位与的方式来判断其是否为0，这样可以极大地加快其运算速度。
+
+
+
+#### 对实现结果的验证
+
+我们想要输出字符串，就直接连续调用这个函数即可
+
+我们在main函数中，实例化一个结构体，并且调用一些打印的方法来验证一下我们的程序是否正确：
+
+```C
+// 初始化屏幕
+struct position* myPos = &(struct position){
+    SCREEN_ROW_LEN, SCREEN_COL_LEN,  // 屏幕行列
+    0, 0, // 当前光标位置
+    CHAR_ROW_LEN, CHAR_COL_LEN, // 字符行列
+    COLOR_OUTPUT_ADDR, sizeof(int) * SCREEN_COL_LEN * SCREEN_ROW_LEN
+};
+
+doClear(myPos);
+
+int curChar; 
+for(curChar = 40; curChar < 130; curChar ++){ // 输出给出的表格中的每一个字符
+    doPrint(myPos, 0xffffff00, 0x00000000, font_ascii[curChar]);
+    doNext(myPos);
+    if(curChar % 10 == 0) {
+        if(curChar % 20 == 0) doBackspace(myPos);
+        doEnter(myPos);
+        if(curChar % 30 == 0) doTab(myPos);
+    }
+}
+```
+
+每输出10个字符输出一个换行符，每输出20个字符输出一个退格，每输出30个输出一个TAB，执行结果如下，完全无误：
+
+<img src="./pics/lab2/image-20201022001902987.png" alt="image-20201022001902987" style="zoom:50%;" />
+
+
+
+### 输出带有格式化信息的字符串
+
+
+
+- 首先，我们需要来复现一下使用场景，这里使用我们常用的`printf`函数来做类比：
+
+  ```c
+  printf("numa:%d\n", numa);
+  ```
+
+  我们来解读一下这个句子，首先，这个句子包括两个大的部分，前面是一个字符串，他表示我们最终需要输出的字符串，在这个字符串中，可能会有一些**占位符**，具体来说，这些占位符可能是基础的：`%d, %s, %c`等等，也有可能是`%06d`这种的，当然，除此之外，这个字符串中可能还有一些较为特殊的字符，比如：`\n, \t, \b`这三个，他们分别表示回车、制表符、回退，这三个都无法直接输出，所以我们需要进行特殊的判断。
+
+  综上所述，我们这个输出一行字的函数可以被拆分为两个阶段：
+
+  - **预处理**：给出一个格式字符串如`"numa:%d\n"`以及跟随的参数`numa`（这个参数的数量未知），对字符串进行解析，得到一个能够直接进行输出的字符串（相当于直接把后面的参数融合到字符串中）。
+  - **输出**：读取预处理完毕的字符串，逐个字符进行输出，输出到屏幕上，这里的输出非常简单，只需要调用上面封装好的操作即可
+
+
+
+#### 格式化字符串处理
+
+这里就属于`dirty work`了，我直接就是一手copy（这里主要在做的工作就是解析字符串，然后来区分其中的`%d,%.3f,%*d,`这种的，然后再用后面的参数填充，这里我就不讲了，直接把作者的代码贴过来就可以了），当然，贴过来之前，我还是改了一下的，因为还需要适配我们写的显示模块：
+
+```C
+#include <stdarg.h>
+#include "printk.h"
+#include "lib.h"
+#include "linkage.h"
+#include "position.h"
+
+extern inline int strlen(char* String);
+
+/**
+ * 给出一段字符串，将字符串转换为数字
+ * @param s 输入的字符串
+ * @return 返回的数字， 整数类型
+ */
+int skip_atoi(const char **s)
+{
+	int i=0;
+
+	while (is_digit(**s))
+		i = i*10 + *((*s)++) - '0';
+	return i;
+}
+
+/**
+ * 根据给出的参数，格式化输出一个数字
+ * @param str
+ * @param num
+ * @param base
+ * @param size
+ * @param precision
+ * @param type
+ * @return 一个字符串，格式化完成后的该数字
+ */
+static char * number(char * str, long num, int base, int size, int precision,	int type)
+{
+	char c,sign,tmp[50];
+	const char *digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	int i;
+
+	if (type&SMALL) digits = "0123456789abcdefghijklmnopqrstuvwxyz";
+	if (type&LEFT) type &= ~ZEROPAD;
+	if (base < 2 || base > 36)
+		return 0;
+	c = (type & ZEROPAD) ? '0' : ' ' ;
+	sign = 0;
+	if (type&SIGN && num < 0) {
+		sign='-';
+		num = -num;
+	} else
+		sign=(type & PLUS) ? '+' : ((type & SPACE) ? ' ' : 0);
+	if (sign) size--;
+	if (type & SPECIAL)
+		if (base == 16) size -= 2;
+		else if (base == 8) size--;
+	i = 0;
+	if (num == 0)
+		tmp[i++]='0';
+	else while (num!=0)
+		tmp[i++]=digits[do_div(num,base)];
+	if (i > precision) precision=i;
+	size -= precision;
+	if (!(type & (ZEROPAD + LEFT)))
+		while(size-- > 0)
+			*str++ = ' ';
+	if (sign)
+		*str++ = sign;
+	if (type & SPECIAL)
+		if (base == 8)
+			*str++ = '0';
+		else if (base==16) 
+		{
+			*str++ = '0';
+			*str++ = digits[33];
+		}
+	if (!(type & LEFT))
+		while(size-- > 0)
+			*str++ = c;
+
+	while(i < precision--)
+		*str++ = '0';
+	while(i-- > 0)
+		*str++ = tmp[i];
+	while(size-- > 0)
+		*str++ = ' ';
+	return str;
+}
+
+
+
+/**
+ * 对给出的字符串进行初始化（识别占位符并且根据需求进行填入）
+ * @param buf 格式化后的字符串将返回到buf数组中
+ * @param fmt 一个字符串，表示需要进行格式化的字符串如："numa : %06d !\n"
+ * @param args 用户输入的参数，用于对前面的字符串进行填充
+ * @return 格式化后字符串的结束位置
+ */
+int vsprintf(char * buf,const char *fmt, va_list args)
+{
+	char * str,*s;
+	int flags;
+	int field_width;
+	int precision;
+	int len,i;
+
+	int qualifier;		/* 'h', 'l', 'L' or 'Z' for integer fields */
+
+	for(str = buf; *fmt; fmt++)
+	{
+
+		if(*fmt != '%')
+		{
+			*str++ = *fmt;
+			continue;
+		}
+		flags = 0;
+		repeat:
+			fmt++;
+			switch(*fmt)
+			{
+				case '-':flags |= LEFT;	
+				goto repeat;
+				case '+':flags |= PLUS;	
+				goto repeat;
+				case ' ':flags |= SPACE;	
+				goto repeat;
+				case '#':flags |= SPECIAL;	
+				goto repeat;
+				case '0':flags |= ZEROPAD;	
+				goto repeat;
+			}
+
+			/* get field width */
+
+			field_width = -1;
+			if(is_digit(*fmt))
+				field_width = skip_atoi(&fmt);
+			else if(*fmt == '*')
+			{
+				fmt++;
+				field_width = va_arg(args, int);
+				if(field_width < 0)
+				{
+					field_width = -field_width;
+					flags |= LEFT;
+				}
+			}
+			
+			/* get the precision */
+
+			precision = -1;
+			if(*fmt == '.')
+			{
+				fmt++;
+				if(is_digit(*fmt))
+					precision = skip_atoi(&fmt);
+				else if(*fmt == '*')
+				{	
+					fmt++;
+					precision = va_arg(args, int);
+				}
+				if(precision < 0)
+					precision = 0;
+			}
+			
+			qualifier = -1;
+			if(*fmt == 'h' || *fmt == 'l' || *fmt == 'L' || *fmt == 'Z')
+			{	
+				qualifier = *fmt;
+				fmt++;
+			}
+							
+			switch(*fmt)
+			{
+				case 'c':
+
+					if(!(flags & LEFT))
+						while(--field_width > 0)
+							*str++ = ' ';
+					*str++ = (unsigned char)va_arg(args, int);
+					while(--field_width > 0)
+						*str++ = ' ';
+					break;
+
+				case 's':
+				
+					s = va_arg(args,char *);
+					if(!s)
+						s = '\0';
+					len = strlen(s);
+					if(precision < 0)
+						precision = len;
+					else if(len > precision)
+						len = precision;
+					
+					if(!(flags & LEFT))
+						while(len < field_width--)
+							*str++ = ' ';
+					for(i = 0;i < len ;i++)
+						*str++ = *s++;
+					while(len < field_width--)
+						*str++ = ' ';
+					break;
+
+				case 'o':
+					
+					if(qualifier == 'l')
+						str = number(str,va_arg(args,unsigned long),8,field_width,precision,flags);
+					else
+						str = number(str,va_arg(args,unsigned int),8,field_width,precision,flags);
+					break;
+
+				case 'p':
+
+					if(field_width == -1)
+					{
+						field_width = 2 * sizeof(void *);
+						flags |= ZEROPAD;
+					}
+
+					str = number(str,(unsigned long)va_arg(args,void *),16,field_width,precision,flags);
+					break;
+
+				case 'x':
+
+					flags |= SMALL;
+
+				case 'X':
+
+					if(qualifier == 'l')
+						str = number(str,va_arg(args,unsigned long),16,field_width,precision,flags);
+					else
+						str = number(str,va_arg(args,unsigned int),16,field_width,precision,flags);
+					break;
+
+				case 'd':
+				case 'i':
+
+					flags |= SIGN;
+				case 'u':
+
+					if(qualifier == 'l')
+						str = number(str,va_arg(args,unsigned long),10,field_width,precision,flags);
+					else
+						str = number(str,va_arg(args,unsigned int),10,field_width,precision,flags);
+					break;
+
+				case 'n':
+					
+					if(qualifier == 'l')
+					{
+						long *ip = va_arg(args,long *);
+						*ip = (str - buf);
+					}
+					else
+					{
+						int *ip = va_arg(args,int *);
+						*ip = (str - buf);
+					}
+					break;
+
+				case '%':
+					
+					*str++ = '%';
+					break;
+
+				default:
+
+					*str++ = '%';	
+					if(*fmt)
+						*str++ = *fmt;
+					else
+						fmt--;
+					break;
+			}
+
+	}
+	*str = '\0';
+	return str - buf;
+}
+
+char buf[500];
+
+/**
+ * 给出颜色与需要输出的东西，进行输出
+ * @param FRcolor 一个整形数字，表示想要输出的字体颜色
+ * @param BKcolor 一个整形数字，表示想要输出的背景颜色
+ * @param fmt 一个字符串，表示用户输出的字符串
+ * @param ... 可变长的参数列表，表示想要填充到字符串中的参数
+ */
+int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...)
+{
+	int i = 0;
+	int count = 0;
+	int line = 0;
+	va_list args;
+	va_start(args, fmt);
+
+	i = vsprintf(buf,fmt, args);
+
+	va_end(args);
+
+	for(count = 0;count < i;count++)
+	{
+		if(buf[count] == '\n') doEnter(&globalPosition);
+		else if(buf[count] == '\b') doBackspace(&globalPosition);
+		else if(buf[count] == '\t') doTab(&globalPosition);
+		else doPrint(&globalPosition, BKcolor, FRcolor, font_ascii[buf[count]]);
+        doNext(&globalPosition);
+	}
+	return i;
+}
+
+```
+
+
+
+我们调用这个`color_printk`：
+
+```C
+doEnter(&globalPosition);
+color_printk(YELLOW,BLACK,"Hello World!");
+doEnter(&globalPosition);
+```
+
+效果如下：
+
+<img src="./pics/lab2/image-20201022035459566.png" alt="image-20201022035459566" style="zoom:50%;" />
+
+
+
+#### 关键点1：多文件共享全局变量（讲给和我一样没学好C语言的人）
+
+作者给出的文件的写法上存在一些错误（或者说是不规范的地方），比如我们在多个地方`#include"font.h"`之后，就会有`multiple define`的错误，经过上面的讲解，相信大家也能分析出来出现这样错误的原因：
+
+- 文件A调用了`font.h`
+- 文件B也调用了`font.h`
+- 预编译、汇编、二进制 文件A，在这个过程中，没有任何错误，并且预编译文件A时已经复制了`font.h`中的内容
+- 同理，预编译B的时候也复制了`font.h`中的内容
+- 最后一步：链接，这个时候就不对了，A/B都定义了`font_ascii`这个字符数组，那怎么办呢？报错吧
+
+好了，这样就启示我们，不要在`.h`文件中定义数据。那问题就来了，不在`.h`中定义，怎么做到`#include`后开箱即用呢？其实也很简单，我们需要在一个`.c`文件中定义想要全局使用的变量（如`font_ascii`），然后再在`.h`文件中使用关键字`extern `引入该变量即可，我们来看一下在这个项目中，是如何使用这个方法的：
+
+`font.c`
+
+```C
+unsigned char font_ascii[256][16] = ......; // 定义数据
+```
+
+`font.h`
+
+```C
+#ifndef __FONT_H__
+#define __FONT_H__
+
+extern unsigned char font_ascii[256][16];
+
+#endif
+```
+
+其实如果用户`#include"font.h"`，实际上就是使用了关键词`extern unsigned char font_ascii[256][16];`，来声明要使用这个全局变量。编译的时候，实际上编译器通过`extern`关键词知道我们要使用 `font_ascii`这个字符数组，但是实际上编译器是不知道`font_ascii`在哪里的。但是到了链接的时候，由于我们把`font.c`这个文件一起加进来编译了，所以程序执行的时候能够知道`font_ascii`的值。
+
+
+
+#### 关键点2：可变长参数
+
+作者的程序中，`#include <stdarg.h>`是引入了一个库，这个库的主要作用是：他可以让函数能够接收未知数量的变量，那么什么是未知数量的变量呢？
+
+```C
+printf("%d,%d,%c\n", numa, numb, charc);
+```
+
+我们来分析一下`printf`这个函数的构成：首先是一个字符串`"%d,%d,%c\n"`，然后后面会根据字符串中的占位符的数量跟上很多变量，也就是说：在写程序的时候不知道后面会跟多少参数，那么就可用这个库来解决这个问题，在这个程序中我们将`color_printk`声明成下面的样子：
+
+```C
+int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...)
+```
+
+这里的`fmt`就相当于`printf`中的字符串，后面的`...`就是未知的参数了，我们来看下如何使用这个库：
+
+- `va_list args;`:创建一个 **va_list** 类型变量
+- `va_start(args, fmt)`：给出上一个参数的位置，将args指向第一个可变参数
+- `va_arg(args, int)`：取出下一个`int`类型的参数
+- `va_end(vl);`：结束标志
+
+##### 可变长参数的原理
+
+这里我们还是来阅读下源码：
+
+```C++
+#define va_start(AP, LASTARG)                         \
+ (AP = ((char *) &(LASTARG) + __va_rounded_size (LASTARG)))//ap指向下一个参数，lastarg不变
+```
+
+这个地方，我们给出的va_list就对应这里的ap，给出的上一个参数`fmt`就对应着这里的`LASTARG`，这里的含义是：`va_list`的第一个元素的内存地址是上一个参数的内存地址+`__va_rounded_size (LASTARG)`。其中`__va_rounded_size (LASTARG)`：
+
+```C
+#define __va_rounded_size(TYPE)  \
+  (((sizeof (TYPE) + sizeof (int) - 1) / sizeof (int)) * sizeof (int))
+```
+
+那么为什么这样就能指向`va_list`的首地址了呢？其实非常简单，我们不妨想一下函数入栈的操作：从右到左依次入栈；也就是说这些参数在内存中是线性排列的。那就是说：只要我们知道`va_list`前的第一个元素的地址，那么我们就不难知道`va_list`的地址了。
+
+同理，我们想找到`va_list`下一个元素的位置也是非常简单，我们只需要知道这次想要读取的元素占了内存中多少个字节即可。
 
 
 
 
-在printk函数中，我们需要实现这一功能
 
+## 系统异常
+
+首先通过以往的经验来谈一下什么是异常：(谈这些的时候都是基于对mips32架构的理解，而不是x86，所以和这个项目可能有些不同)：
+
+ 异常可能来源于中断、陷阱、系统调用、无效指令、溢出等等等等，简而言之就是如果执行到当前出现了cpu无法解决的问题的时候就会抛出异常；这里需要特别注意的是：**异常是由`cpu`抛出的**，**操作系统进行处理的**；在mips中，cpu检测到异常后，会将流水线停掉，将异常信息记录到`cp0`寄存器中，然后跳转到异常处理例程。异常处理例程是由操作系统来决定的，该例程所在内存地址是约定俗成的（固定的，必须装载在固定位置）。
+
+
+
+### 异常的分类
+
+作者给出了一些描述：
+
+> - **错误（fault）**。错误是一种可被修正的异常。只要错误被修正，处理器可将程序或任务的运行环境还原至异常发生前（已在栈中保存CS和EIP寄存器值），并重新执行产生异常的指令，也就是说异常的返回地址指向产生错误的指令，而不是其后的位置。
+> - **陷阱（trap）**。陷阱异常同样允许处理器继续执行程序或任务，只不过处理器会跳过产生异常的指令，即陷阱异常的返回地址指向诱发陷阱指令之后的地址。
+> - **终止（abort）**。终止异常用于报告非常严重的错误，它往往无法准确提供产生异常的位置，同时也不允许程序或任务继续执行，典型的终止异常有硬件错误或系统表存在不合逻辑、非法值。
+>
+> 当终止异常产生后，程序现场不可恢复，也无法继续执行。当错误异常和陷阱异常产生后，程序现场可以恢复并继续执行，只不过错误异常会重新执行产生异常的指令，而陷阱异常会跳过产生异常的指令。
+
+除此之外，还有一个异常的分类表：
+
+| 向量号 | 助记符 | 异常/中断描述           | 异常/中断类型 | 错误码      | 触发源                          |
+| :----- | :----- | :---------------------- | :------------ | :---------- | :------------------------------ |
+| 0      | #DE    | 除法错误                | 错误          | No          | DIV或IDIV指令                   |
+| 1      | #DB    | 调试异常                | 错误/陷阱     | No          | 仅供Intel处理器使用             |
+| 2      | —      | NMI中断                 | 中断          | No          | 不可屏蔽中断                    |
+| 3      | #BP    | 断点异常                | 陷阱          | No          | INT 3指令                       |
+| 4      | #OF    | 溢出异常                | 陷阱          | No          | INTO指令                        |
+| 5      | #BR    | 越界异常                | 错误          | No          | BOUND指令                       |
+| 6      | #UD    | 无效/未定义的机器码     | 错误          | No          | UD2指令或保留的机器码           |
+| 7      | #NM    | 设备异常（FPU不存在）   | 错误          | No          | 浮点指令WAIT/FWAIT指令          |
+| 8      | #DF    | 双重错误                | 终止          | Yes（Zero） | 任何异常、NMI中断或INTR中断     |
+| 9      | —      | 协处理器段越界（保留）  | 错误          | No          | 浮点指令                        |
+| 10     | #TS    | 无效的TSS段             | 错误          | Yes         | 访问TSS段或任务切换             |
+| 11     | #NP    | 段不存在                | 错误          | Yes         | 加载段寄存器或访问系统段        |
+| 12     | #SS    | SS段错误                | 错误          | Yes         | 栈操作或加载栈段寄存器SS        |
+| 13     | #GP    | 通用保护性异常          | 错误          | Yes         | 任何内存引用和保护检测          |
+| 14     | #PF    | 页错误                  | 错误          | Yes         | 任何内存引用                    |
+| 15     | —      | Intel保留，请勿使用     | —             | No          | —                               |
+| 16     | #MF    | x87 FPU错误（计算错误） | 错误          | No          | x87 FPU浮点指令或WAIT/FWAIT指令 |
+| 17     | #AC    | 对齐检测                | 错误          | Yes(Zero)   | 引用内存中的任何数据            |
+| 18     | #MC    | 机器检测                | 终止          | No          | 如果有错误码，其与CPU类型有关   |
+| 19     | #XM    | SIMD浮点异常            | 错误          | No          | SSE/SSE2/SSE3浮点指令           |
+| 20     | #VE    | 虚拟化异常              | 错误          | No          | 违反EPT                         |
+| 21-31  | —      | Intel保留，请勿使用     | —             | —           | —                               |
+| 32-255 | —      | 用户自定义中断          | 中断          | —           | 外部中断或执行INT n指令         |
+
+当发生异常的时候，我们就可以通过`向量号`来知道异常的类型，同时通过`错误码`来检测异常的原因。
+
+
+
+
+
+
+
+#### 预备知识1：IDT表&中断门
+
+参考：[**《编写操作系统之路》**](https://www.bilibili.com/video/BV127411K72M)
+
+![屏幕截图 2020-10-23 17:38:18](pics/lab2/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202020-10-23%20173818-1603446020768.png)
+
+在前面的学习中，IDT表已经多次出现了，我们每次都在对IDT表进行定义，以及使用`lidt`指令对IDT表进行更新、读取，但我们根本不知道它是干什么的。它的学名叫做**中段描述符表**。在IDT表中保存的是一个个“门”，那么每一个门中都保存着很多信息，在这些信息中最为关键的（我们需要理解的）就是：
+
+- 选择子：就是段选择子
+- 偏移：在相应段中的偏移地址
+
+这个门可以被分为：中断门、调用门、陷阱门、任务门，为了方便理解，我们从调用门开始学起。
+
+- 调用门：调用门非常简单，他的作用就是被调用，方法是`call 调用门`，在执行这样的语句的时候实际上就是在做`call 选择子：偏移`，这个过程就等同于调用一个函数，但是于直接调用函数不同，使用调用门可以实现从低特权级到高特权级的转移。比如说：想要从用户模式的代码B调用搞特权级的A，如果直接`call`，那么就会出现错误（保护模式特性），这个时候使用`调用门`就可以解决这个问题。
+- **中断门**：中断门和调用门基本相同，唯一的不同点在于在使用中断门时，系统会自动屏蔽掉其他中断
+
+
+
+#### 预备知识2：特权级转换实现
+
+参考：
+
+- [**《编写操作系统之路》**](https://www.bilibili.com/video/BV127411K72M) 
+- **[总结：特权级之间的转换](https://blog.csdn.net/bfboys/article/details/52420211)**
+
+##### 段内跳转
+
+首先我们来看一下最简单的函数跳转（段内跳转）：
+
+```assembly
+; 调用函数
+push eax ; 压入参数2
+push ebx ; 压入参数1
+call function ; 调用
+
+; 被调用的函数
+function:
+	mov ebx, [esp + 4] ; 取出参数1
+	mov ebx, [esp + 8] ; 取出参数2
+	...
+	ret ; 返回
+```
+
+这个过程应当是大家熟悉的，我们将参数压栈的顺序和取出参数的顺序应该是相反的，这是栈的基本特征。但是同时产生了一个问题：为什么取出最后一个`push`进去的参数需要`+4`呢？
+
+- 这是因为我们在使用`call`的时候，处理器默认将下一条需要执行的指令的地址也压入了栈中，这样在执行`ret`结束函数时，可以直接使用栈中的地址进行跳转，来达到继续执行的目的。而这个过程对于用户来说是不可见的。
+
+段内跳转前后的栈内存如下：
+
+![](./pics/lab2/figure4.png)
+
+
+
+##### 段间跳转（特权级相同）
+
+上面所讲述的跳转方法是段内跳转的方法。下面我们来看一下段间跳转，首先来看一张图，这张图表示的是长调用且不发生特权级转移时堆栈的变化：
+
+![](pics/lab2/figure5.png)
+
+可以看到，唯一的区别在于长跳转的时候，不仅保存了偏移，还保存了段选择符号，以便回到不同段的代码处继续执行。
+
+
+
+##### 段间转换（特权级不同）
+
+首先需要说明的是，如果需要在不同特权级的段之间进行跳转的话，那么是不可以直接使用call +地址的形式来进行跳转的。而是需要使用我们上面说的各种门描述符来进行跳转，使用的方法就是：`call  gate`，这样的方法就能在不同特权级的代码段之间切换了。那么我们来看，如何切换：
+
+在不同特权级下的堆栈段不同，所以每一个任务最多可能在4个特权级间转移，所以，每个任务实际上需要4个堆栈。那么我们就遇到了第一个问题：**如何保存不同特权级下的堆栈？**
+
+其实解决方法非常简单，因为intel已经给我们提供好了，我们使用一个叫做`TSS`的表格来存储cpu当前运行时的很多状态，其中的一项就是我们这里需要存储的：不同栈的`ss和esp`，需要注意的是，特权级`0,1`的都保存在`tss`段 ，是只读的。只有在访问更高特权级的时候，才会创建新的堆栈，同时在调用结束的时候，相应的堆栈也会被销毁，以供下一次调用。
+
+
+
+我们来看一下调用前后栈的变化：
+
+<img src="pics/lab2/image-20201023192449112.png" alt="image-20201023192449112" style="zoom: 80%;" />
+
+返回时：
+
+<img src="pics/lab2/image-20201023192522395.png" alt="image-20201023192522395" style="zoom:80%;" />
+
+现在，我们面临着最后一个问题：**中间需要的很多信息从哪里来？**
+
+其实这个问题也很简单。。我们上面不是讲了一个门嘛，门里面含有两个Byte专门用于储存目标代码段的一些属性，比如参数数量等等。
+
+
+
+最后我们总结一下在进行特权级切换时的流程：
+
+1. 从门中获得目标的特权级，来让TSS知道该切换到哪个ss和esp
+2. 从TSS中读取新的ss和esp
+3. 对ss进行校验（如果不存在就会爆出异常）
+4. 暂时保存这个时候的ss:esp，也就是调用者的ss，esp
+5. 加载新的ss、esp
+6. 将刚才保存的ss、esp加载到栈中
+7. 将调用者堆栈中的参数拷贝到新的栈中，其中参数的数量由门中属性区域的Param Count来决定，最多只有31个参数
+8. 将当前调用者的cs:eip压栈。
+9. 加载门中指定的`cs:eip`，开始执行新的代码，这样就完成了特权级变化的跳转
+
+
+
+虽然这个过程很复杂， 但是它的原理很简单，如果你没有看懂也没有关系，你可以去网上搜索其他人的讲解。这个过程实际上是被intel公司封装好了的，我们只需要懂它的大概原理就可以进行使用了。下面一节的内容可能与现在的内容有部分重复。
+
+
+
+#### 预备知识3：中断处理过程（摘自《一个六十四位操作系统的设计与实现》有部分改动）
+
+
+
+我们观察到上面的每一种异常/中断，都对应这样一个向量，发生中断时会用到之前定义过的`IDT中段描述符表`，来检索相应的门描述符，然后再通过地址映射的方法，找到中断处理例程的代码段的地址，最后转移到目标地址进行执行，整个过程如下图所示：
+
+<img src="http://www.ituring.com.cn/figures/2019/OperatingSystemx64/05.d04z.006.png" style="zoom: 50%;" />
+
+当发生中断时，会检测产生中断的程序的特权级，并且与代码寄存器的特权级进行比较：
+
+- 如果中断/异常处理程序的特权级更高，则会在中断/异常处理程序执行前切换栈空间，以下是栈空间的切换过程：
+
+  (1) 处理器会从任务状态段TSS中取出对应特权级的栈段选择子和栈指针，并将它们作为中断/异常处理程序的栈空间进行切换。在栈空间切换的过程中，处理器将自动把切换前的SS和ESP寄存器值压入中断/异常处理程序栈。
+
+  (2) 在栈空间切换的过程中，处理器还会保存被中断程序的EFLAGS、CS和EIP寄存器值到中断/异常处理程序栈。
+
+  (3) 如果异常会产生错误码，则将其保存在异常栈内，位于EIP寄存器之后。
+
+- 如果中断/异常处理程序的特权级与代码段寄存器的特权级相等。
+
+  (1) 处理器将保存被中断程序的EFLAGS、CS和EIP寄存器值到栈中（如图4-7所示）。
+
+  (2) 如果异常会产生错误码，则将其保存在异常栈内，位于EIP寄存器之后。
+
+  <img src="http://www.ituring.com.cn/figures/2019/OperatingSystemx64/05.d04z.007.png" style="zoom:50%;" /> 
+
+  处理器必须借助`IRET`指令才能从异常/中断处理程序返回。
+
+- **异常/中断处理的标志位使用**。当处理器穿过中断门或陷阱门执行异常/中断处理程序时，处理器会在标志寄存器EFLAGS入栈后复位TF标志位，以关闭单步调试功能。（处理器还会复位VM、RF和NT标志位。）在执行`IRET`指令的过程中，处理器会还原被中断程序的标志寄存器EFLAGS，进而相继还原TF、VM、RF和NT等标志位。
+
+  中断门与陷阱门的不同之处在于执行处理程序时对IF标志位（位于标志寄存器EFLAGS中）的操作。
+
+  - 当处理器穿过中断门执行异常/中断处理程序时，处理器将复位IF标志位，以防止其他中断请求干扰异常/中断处理程序。处理器会在随后执行`IRET`指令时，将栈中保存的EFLAGS寄存器值还原，进而置位IF标志位。
+  - 当处理器穿过陷阱门执行异常/中断处理程序时，处理器却不会复位IF标志位。
+
+  其实，中断和异常向量同在一张IDT内，只是它们的向量号不同罢了。IDT表的前32个向量号被异常占用，而且每个异常的向量号固定不能更改，从向量号32开始被中断处理程序所用。
+
+
+
+### 检测除法错误
+
+通过上面的学习，我们已经掌握了这部分的基本原理，接下来我们通过看作者代码+自己写的方法来进行应用。
+
+
+
+#### 初始化IDT表格
+
+回顾下总体的过程，在发生异常的时候，cpu会拿着异常向量在`IDT`表格中进行查找，将代码跳转到相应的表项记录的地址。所以我们就需要对`IDT`表格进行初始化，给每一个异常号分配一个异常处理例程。这个过程非常好理解。

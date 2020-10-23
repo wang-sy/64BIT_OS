@@ -2,21 +2,27 @@ all: system
 # 生成kernel.bin
 	objcopy -I elf64-x86-64 -S -R ".eh_frame" -R ".comment" -O binary ./build/system ./build/kernel.bin
 
-system: head.o main.o position.o Kernel.lds
+system: head.o main.o position.o printk.o font.o Kernel.lds
 # 
-	ld -b elf64-x86-64 ./build/head.o ./build/main.o position.o -T Kernel.lds -o ./build/system
+	ld -b elf64-x86-64 ./build/head.o ./build/main.o ./build/position.o ./build/printk.o ./build/font.o -T Kernel.lds -o ./build/system
 
 head.o: head.S
 # 生成kernel head binary file
 	gcc -E head.S > ./build/head.s
 	as --64 -o ./build/head.o ./build/head.s
 
-main.o: main.c position.h position.o
+main.o:
 # 编译main.c内核主程序(只编译不链接)
 	gcc -mcmodel=large -fno-builtin -m64 -c main.c -o ./build/main.o
 
-position.o: position.c position.h
-	gcc  -mcmodel=large -fno-builtin -m64 -c position.c
+position.o:
+	gcc  -mcmodel=large -fno-builtin -m64 -c position.c -o ./build/position.o
+
+printk.o:
+	gcc  -mcmodel=large -fno-builtin -m64 -c printk.c -o ./build/printk.o -fno-stack-protector
+
+font.o:
+	gcc  -mcmodel=large -fno-builtin -m64 -c font.c -o ./build/font.o 
 
 
 clean: 
