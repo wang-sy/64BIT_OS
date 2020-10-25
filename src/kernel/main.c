@@ -1,5 +1,7 @@
 #include "position.h"
 #include "printk.h"
+#include "gate.h"
+#include "trap.h"
 
 #define COLOR_OUTPUT_ADDR (int *)0xffff800000a00000
 #define SCREEN_ROW_LEN 900 // 一共有多少行
@@ -64,6 +66,23 @@ void Start_Kernel() {
     doEnter(&globalPosition);
     color_printk(YELLOW,BLACK,"Hello World!");
     doEnter(&globalPosition);
+
+    // TSS段描述符的段选择子加载到TR寄存器
+    load_TR(8);
+
+    // 初始化
+	set_tss64(
+        0xffff800000007c00, 0xffff800000007c00, 
+        0xffff800000007c00, 0xffff800000007c00, 
+        0xffff800000007c00, 0xffff800000007c00,
+        0xffff800000007c00, 0xffff800000007c00, 
+        0xffff800000007c00, 0xffff800000007c00
+    );
+
+	sys_vector_init(); // 初始化IDT表，确定各种异常的处理函数
+
+    int a = 1 / 0;
+
 	while(1){
         ;
     }

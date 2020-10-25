@@ -308,3 +308,28 @@ int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...)
 	}
 	return i;
 }
+
+/**
+ * 可以直接拿来当printf来用
+ */
+int printk(const char * fmt,...){
+	int i = 0;
+	int count = 0;
+	int line = 0;
+	va_list args;
+	va_start(args, fmt);
+
+	i = vsprintf(buf,fmt, args);
+
+	va_end(args);
+
+	for(count = 0;count < i;count++)
+	{
+		if(buf[count] == '\n') doEnter(&globalPosition);
+		else if(buf[count] == '\b') doBackspace(&globalPosition);
+		else if(buf[count] == '\t') doTab(&globalPosition);
+		else doPrint(&globalPosition, BLACK, WHITE, font_ascii[buf[count]]);
+        doNext(&globalPosition);
+	}
+	return i;
+}

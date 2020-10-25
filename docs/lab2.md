@@ -1697,3 +1697,720 @@ function:
 #### 初始化IDT表格
 
 回顾下总体的过程，在发生异常的时候，cpu会拿着异常向量在`IDT`表格中进行查找，将代码跳转到相应的表项记录的地址。所以我们就需要对`IDT`表格进行初始化，给每一个异常号分配一个异常处理例程。这个过程非常好理解。
+
+```assembly
+setup_IDT:							
+	leaq	ignore_int(%rip),	%rdx
+	movq	$(0x08 << 16),	%rax
+	movw	%dx,	%ax
+	movq	$(0x8E00 << 32),	%rcx		
+	addq	%rcx,	%rax
+	movl	%edx,	%ecx
+	shrl	$16,	%ecx
+	shlq	$48,	%rcx
+	addq	%rcx,	%rax
+	shrq	$32,	%rdx
+	leaq	IDT_Table(%rip),	%rdi
+	mov	$256,	%rcx
+rp_sidt:
+	movq	%rax,	(%rdi)
+	movq	%rdx,	8(%rdi)
+	addq	$0x10,	%rdi
+	dec	%rcx
+	jne	rp_sidt
+```
+
+我认为，我们不需要再去单句单句的去理解这段汇编干了什么了，因为说实话。。不是很有意义，我们的重点应该放在这段代码达到了什么目的上面。简单说，这段代码改变了IDT表的值，对IDT表进行了初始化，将idt表的每一项都填上了相同的值，这个值的意思是，当前门会跳转到这个`ignore_int`函数中进行处理，那么他是怎么实现的呢？（我还是会讲，就是不要太在意单个语句的作用，当前阶段学x86投入产出有点低）：
+
+- 首先，在`setup_IDT`中，我们定义了一个标准的门（这个门会跳转到`ignore_int`函数）
+- 然后，获取了IDT表的地址`leaq	IDT_Table(%rip),	%rdi`
+- 最后，使用循环，每次覆盖IDT表的一项，覆盖256次（这是因为IDT表格一共有256个条目【为什么有256条目？没为什么！】）
+- 每执行完一次循环，就会自减`dec	%rcx`，直到覆盖完成后结束：`jne	rp_sidt`。
+
+#### 初始化TSS
+
+我们接着回忆过程，在跳转的时候，我们需要使用TSS来保存、切换状态，那么我们在这里需要给TSS一个初始的状态（TSS也需要初始化）
+
+
+
+```assembly
+setup_TSS64:
+    leaq    TSS64_Table(%rip),    %rdx
+    xorq    %rax,    %rax
+    xorq    %rcx,    %rcx
+    movq    $0x89,   %rax
+    shlq    $40,     %rax
+    movl    %edx,    %ecx
+    shrl    $24,     %ecx
+    shlq    $56,     %rcx
+    addq    %rcx,    %rax
+    xorq    %rcx,    %rcx
+    movl    %edx,    %ecx
+    andl    $0xffffff,    %ecx
+    shlq    $16,     %rcx
+    addq    %rcx,    %rax
+    addq    $103,    %rax
+    leaq    GDT_Table(%rip),    %rdi
+    movq    %rax,    64(%rdi)
+    shrq    $32,     %rdx
+    movq    %rdx,    72(%rdi)
+
+    mov     $0x40,   %ax
+    ltr     %ax
+
+    movq    go_to_kernel(%rip),    %rax        /* movq address */
+    pushq   $0x08
+    pushq   %rax
+    lretq
+```
+
+
+
+这部分程序负责初始化GDT（IA-32e模式）内的TSS Descriptor，并通过LTR汇编指令把TSS Descriptor的选择子加载到TR寄存器中。
+
+
+
+#### 异常处理模块
+
+其实我觉得，前面两个部分，知道有这么个东西就可以了，这里才是重要的地方。
+
+```assembly
+//=======    ignore_int
+
+ignore_int:
+    cld
+    pushq    %rax
+    pushq    %rbx
+    pushq    %rcx
+    pushq    %rdx
+    pushq    %rbp
+    pushq    %rdi
+    pushq    %rsi
+
+    pushq    %r8
+    pushq    %r9
+    pushq    %r10
+    pushq    %r11
+    pushq    %r12
+    pushq    %r13
+    pushq    %r14
+    pushq    %r15
+
+    movq     %es,     %rax
+    pushq    %rax
+    movq     %ds,     %rax
+    pushq    %rax
+
+    movq     $0x10,   %rax
+    movq     %rax,    %ds
+    movq     %rax,    %es
+
+    leaq     int_msg(%rip),    %rax            /* leaq get address */
+    pushq    %rax
+    movq     %rax,    %rdx
+    movq     $0x00000000,    %rsi
+    movq     $0x00ff0000,    %rdi
+    movq     $0,      %rax
+    callq    color_printk
+    addq     $0x8,    %rsp
+
+Loop:
+    jmp      Loop
+
+    popq     %rax
+    movq     %rax,    %ds
+    popq     %rax
+    movq     %rax,    %es
+
+    popq     %r15
+    popq     %r14
+    popq     %r13
+    popq     %r12
+    popq     %r11
+    popq     %r10
+    popq     %r9
+    popq     %r8
+
+    popq     %rsi
+    popq     %rdi
+    popq     %rbp
+    popq     %rdx
+    popq     %rcx
+    popq     %rbx
+    popq     %rax
+    iretq
+
+int_msg:
+    .asciz "Unknown interrupt or fault at RIP\n"
+```
+
+到此为止，我们就完成了对异常的监听，并且进行简单的处理（过于简单，直接输出提示，并且宕机），向`main`函数中加入`int a  = 1 / 0`，获得以下结果：
+
+<img src="pics/lab2/image-20201023202828221.png" alt="image-20201023202828221" style="zoom: 50%;" />
+
+
+
+### 完善异常处理
+
+
+
+#### 添加门
+
+现在给出一段代码，这段代码可以添加一个门：
+
+```assembly
+#define _set_gate(gate_selector_addr,attr,ist,code_addr)             \
+do                                                                   \
+{    unsigned long __d0,__d1;                                        \
+    __asm__ __volatile__    (    "movw    %%dx,    %%ax     \n\t"    \
+                                 "andq    $0x7,    %%rcx    \n\t"    \
+                                 "addq    %4,      %%rcx    \n\t"    \
+                                 "shlq    $32,     %%rcx    \n\t"    \
+                                 "addq    %%rcx,   %%rax    \n\t"    \
+                                 "xorq    %%rcx,   %%rcx    \n\t"    \
+                                 "movl    %%edx,   %%ecx    \n\t"    \
+                                 "shrq    $16,     %%rcx    \n\t"    \
+                                 "shlq    $48,     %%rcx    \n\t"    \
+                                 "addq    %%rcx,   %%rax    \n\t"    \
+                                 "movq    %%rax,   %0       \n\t"                \
+                                 "shrq    $32,     %%rdx    \n\t"                \
+                                 "movq    %%rdx,   %1       \n\t"                \
+                                 :"=m"(*((unsigned long)(gate_selector_addr))),  \
+                                 "=m"(*(1 + (unsigned long *)(gate_selector_addr
+                                     ))),"=&a"(__d0), "=&d"(__d1)                \
+                                 :"i"(attr << 8),                                \
+                                 "3"((unsigned long *)(code_addr)),"2"(0x8 <<
+                                 16),"c"(ist)                                    \
+                                 :"memory"                                       \
+                                       );                                        \
+}while(0)
+```
+
+实际上我们不需要理解这段代码到底是怎么运作的，我们需要知道的重点是：
+
+- 定义的方法：`define`，当我们输入` _set_gate`的时候，实际上就是将下面的代码全都复制进来了。
+- 执行的参数：
+  - gate_selector_addr：对应的IDT表的向量号
+  - attr： 添加到IDT中的项目的类型（陷阱、中断、系统调用）
+  - ist： 用于填充TSS中的内容
+  - code_addr：跳转到的目标地址
+- 执行的结果：系统遇到中断的时候，会使用中断向量进行检索IDT表，向我们已经定义好的目标地址进行带权跳转。
+
+
+
+#### 对添加门的代码进行二次封装
+
+我们在这里对添加门的代码进行二次封装：
+
+```assembly
+/**
+ * 创建陷阱门
+ * @param n 对应的IDT表的条目号
+ * @param ist 用于填充TSS
+ * @param addr 跳转的目标地址，需要传递一个函数指针
+ */ 
+inline void set_intr_gate(unsigned int n,unsigned char ist,void * addr) 
+{
+	_set_gate(IDT_Table + n , 0x8E , ist , addr);	//P,DPL=0,TYPE=E
+}
+
+/**
+ * 创建一个陷阱门
+ * @param n 对应的IDT表的条目号
+ * @param ist 用于填充TSS
+ * @param addr 跳转的目标地址，需要传递一个函数指针
+ */ 
+inline void set_trap_gate(unsigned int n,unsigned char ist,void * addr)
+{
+	_set_gate(IDT_Table + n , 0x8F , ist , addr);	//P,DPL=0,TYPE=F
+}
+
+/**
+ * 创建一个DPL为3的陷阱门
+ * @param n 对应的IDT表的条目号
+ * @param ist 用于填充TSS
+ * @param addr 跳转的目标地址，需要传递一个函数指针
+ */ 
+inline void set_system_gate(unsigned int n,unsigned char ist,void * addr)
+{
+	_set_gate(IDT_Table + n , 0xEF , ist , addr);	//P,DPL=3,TYPE=F
+}
+
+/**
+ * 创建一个DPL是0的中断门
+ * @param n 对应的IDT表的条目号
+ * @param ist 用于填充TSS
+ * @param addr 跳转的目标地址，需要传递一个函数指针
+ */ 
+inline void set_system_intr_gate(unsigned int n,unsigned char ist,void * addr)	//int3
+{
+	_set_gate(IDT_Table + n , 0xEE , ist , addr);	//P,DPL=3,TYPE=E
+}
+
+```
+
+这样就可以更加方便的添加各种门了。对应的门的类型已经在代码中注明。
+
+在这里有一个小的细节，我们还是需要讲一下的，我们在当前这个`gate.h`文件中写了这样的代码，尽心了一些变量类型的定义与声明：
+
+```c
+struct desc_struct 
+{
+	unsigned char x[8];
+};
+
+struct gate_struct
+{
+	unsigned char x[16];
+};
+
+extern struct desc_struct GDT_Table[];
+extern struct gate_struct IDT_Table[];
+extern unsigned int TSS64_Table[26];
+```
+
+可以看到，这里我们使用了一个`GDT_Table`，但是我们并没有在`.c`文件中进行定义，这是因为我们之前在`head`文件中的`.global`之中进行了定义，定义时的代码段如下：
+
+```assembly
+.section .data
+
+.globl GDT_Table
+
+GDT_Table:
+	.quad	0x0000000000000000			/*0	NULL descriptor		       	00*/
+	.quad	0x0020980000000000			/*1	KERNEL	Code	64-bit	Segment	08*/
+	.quad	0x0000920000000000			/*2	KERNEL	Data	64-bit	Segment	10*/
+	.quad	0x0020f80000000000			/*3	USER	Code	64-bit	Segment	18*/
+	.quad	0x0000f20000000000			/*4	USER	Data	64-bit	Segment	20*/
+	.quad	0x00cf9a000000ffff			/*5	KERNEL	Code	32-bit	Segment	28*/
+	.quad	0x00cf92000000ffff			/*6	KERNEL	Data	32-bit	Segment	30*/
+	.fill	10,8,0					/*8 ~ 9	TSS (jmp one segment <7>) in long-mode 128-bit 40*/
+GDT_END:
+
+```
+
+这样的定义方法，实际上和我们上一节中说的在`.c`文件中声明全局变量，然后再在`.h`文件中使用`extern`关键词进行引入相同。
+
+
+
+#### 添加各种门
+
+在这一节中，我们会看一下作者是如何添加各种门的
+
+作者给了我们一种实现的方法：
+
+```C
+#include "trap.h"
+
+void sys_vector_init()
+{
+    set_trap_gate(0,1,divide_error);
+    set_trap_gate(1,1,debug);
+    set_intr_gate(2,1,nmi);
+    set_system_gate(3,1,int3);
+    set_system_gate(4,1,overflow);
+    set_system_gate(5,1,bounds);
+    set_trap_gate(6,1,undefined_opcode);
+    set_trap_gate(7,1,dev_not_available);
+    set_trap_gate(8,1,double_fault);
+    set_trap_gate(9,1,coprocessor_segment_overrun);
+    set_trap_gate(10,1,invalid_TSS);
+    set_trap_gate(11,1,segment_not_present);
+    set_trap_gate(12,1,stack_segment_fault);
+    set_trap_gate(13,1,general_protection);
+    set_trap_gate(14,1,page_fault);
+    //15 Intel reserved. Do not use.
+    set_trap_gate(16,1,x87_FPU_error);
+    set_trap_gate(17,1,alignment_check);
+    set_trap_gate(18,1,machine_check);
+    set_trap_gate(19,1,SIMD_exception);
+    set_trap_gate(20,1,virtualization_exception);
+
+    //set_system_gate(SYSTEM_CALL_VECTOR,7,system_call);
+}
+```
+
+同理，需要在`trap.h`之中预定义各种各样的处理函数:
+
+```C
+#ifndef __TRAP_H__
+
+#define __TRAP_H__
+
+#include "linkage.h"
+#include "printk.h"
+#include "lib.h"
+
+/*
+
+*/
+
+ void divide_error();
+ void debug();
+ void nmi();
+ void int3();
+ void overflow();
+ void bounds();
+ void undefined_opcode();
+ void dev_not_available();
+ void double_fault();
+ void coprocessor_segment_overrun();
+ void invalid_TSS();
+ void segment_not_present();
+ void stack_segment_fault();
+ void general_protection();
+ void page_fault();
+ void x87_FPU_error();
+ void alignment_check();
+ void machine_check();
+ void SIMD_exception();
+ void virtualization_exception();
+
+
+
+/*
+
+*/
+
+void sys_vector_init();
+
+
+#endif
+
+```
+
+
+
+在这里，我们定义了一些参数的偏移量：
+
+`entry.S`
+
+```assembly
+#include "linkage.h"
+
+R15 =    0x00
+R14 =    0x08
+R13 =    0x10
+R12 =    0x18
+R11 =    0x20
+R10 =    0x28
+R9  =    0x30
+R8  =    0x38
+RBX =    0x40
+RCX =    0x48
+RDX =    0x50
+RSI =    0x58
+RDI =    0x60
+RBP =    0x68
+DS  =    0x70
+ES  =    0x78
+RAX =    0x80
+FUNC    = 0x88
+ERRCODE = 0x90
+RIP =    0x98
+CS  =    0xa0
+RFLAGS =    0xa8
+OLDRSP =    0xb0
+OLDSS  =    0xb8
+```
+
+
+
+这里定义的函数会在汇编中实现，实现方法如下：
+
+```assembly
+ENTRY(debug)
+	pushq	$0
+	pushq	%rax
+	leaq	do_debug(%rip),	%rax
+	xchgq	%rax,	(%rsp)
+	jmp	error_code
+```
+
+这里的`ENTRY`是一个宏定义，是在`linkage.h`之中定义的，定义方法如下：
+
+```C
+
+#define SYMBOL_NAME(X)	X
+
+#define SYMBOL_NAME_STR(X)	#X
+
+#define SYMBOL_NAME_LABEL(X) X##:
+
+
+#define ENTRY(name)		\
+.global	SYMBOL_NAME(name);	\
+SYMBOL_NAME_LABEL(name)
+```
+
+这个`ENTERY`实际上就是一个声明全局函数的方法。
+
+
+
+在这个叫做`debug`的函数的最后，会进入到`error_code`这个代码段，改代码段如下：
+
+```assembly
+error_code:
+	pushq	%rax
+	movq	%es,	%rax
+	pushq	%rax
+	movq	%ds,	%rax
+	pushq	%rax
+	xorq	%rax,	%rax
+
+	pushq	%rbp
+	pushq	%rdi
+	pushq	%rsi
+	pushq	%rdx
+	pushq	%rcx
+	pushq	%rbx
+	pushq	%r8
+	pushq	%r9
+	pushq	%r10
+	pushq	%r11
+	pushq	%r12
+	pushq	%r13
+	pushq	%r14
+	pushq	%r15	
+	
+	cld
+	movq	ERRCODE(%rsp),	%rsi
+	movq	FUNC(%rsp),	%rdx	
+
+	movq	$0x10,	%rdi
+	movq	%rdi,	%ds
+	movq	%rdi,	%es
+
+	movq	%rsp,	%rdi
+	////GET_CURRENT(%ebx)
+
+	callq 	*%rdx
+
+	jmp	ret_from_exception	
+```
+
+可以看到，这个代码段实际上就是把各种寄存器的状态push到了栈中，然后调用了相应的方法，调用方法结束后跳转到`ret_from_exception`代码段进行复原，复原的代码段定义如下：
+
+```assembly
+ret_from_exception:
+	/*GET_CURRENT(%ebx)	need rewrite*/
+ENTRY(ret_from_intr)
+	jmp	RESTORE_ALL	/*need rewrite*/
+```
+
+
+
+而RESTORE_ALL就像下面一样：它的作用也非常简单，就是把各种push进来的都pop出去即可
+
+```assembly
+RESTORE_ALL:
+    popq    %r15;
+    popq    %r14;
+    popq    %r13;
+    popq    %r12;
+    popq    %r11;
+    popq    %r10;
+    popq    %r9;
+    popq    %r8;
+    popq    %rbx;
+    popq    %rcx;
+    popq    %rdx;
+    popq    %rsi;
+    popq    %rdi;
+    popq    %rbp;
+    popq    %rax;
+    movq    %rax,    %ds;
+    popq    %rax;
+    movq    %rax,    %es;
+    popq    %rax;
+    addq    $0x10,   %rsp;
+    iretq;
+```
+
+
+
+
+
+所以说，在整个过程中，汇编语言执行的是：将现场压入栈中，调用C语言函数进行处理、等待函数执行完毕、恢复现场的作用。我们来看一下div的异常处理：
+
+```C
+void do_divide_error(unsigned long rsp,unsigned long error_code)
+{
+	unsigned long * p = NULL;
+	p = (unsigned long *)(rsp + 0x98);
+	color_printk(RED,BLACK,"do_divide_error(0),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",error_code , rsp , *p);
+	while(1);
+}
+```
+
+这个处理方式也是非常简单的，就是直接将错误的信息输出了。
+
+
+
+
+
+同理，我们再来看一个：
+
+```assembly
+ENTRY(invalid_TSS)
+    pushq    %rax
+    leaq     do_invalid_TSS(%rip),    %rax
+    xchgq    %rax,    (%rsp)
+    jmp      error_code
+```
+
+这个与前面的debug有一些区别，区别在于：`invalid_TSS`是一个有返回错误码的中断，intel的cpu直接隐式的帮助我们将错误码push到栈中了，所以我们就不需要重复push了，我们之前的时候push 0 实际上就是将`error_code`置为了0.
+
+
+
+最后，我们来看一个特殊的（唯一一个特殊的）：
+
+```assembly
+
+ENTRY(nmi)
+	pushq	%rax
+	cld;			
+	pushq	%rax;	
+	
+	pushq	%rax
+	movq	%es,	%rax
+	pushq	%rax
+	movq	%ds,	%rax
+	pushq	%rax
+	xorq	%rax,	%rax
+	
+	pushq	%rbp;		
+	pushq	%rdi;		
+	pushq	%rsi;		
+	pushq	%rdx;		
+	pushq	%rcx;		
+	pushq	%rbx;		
+	pushq	%r8;		
+	pushq	%r9;		
+	pushq	%r10;		
+	pushq	%r11;		
+	pushq	%r12;		
+	pushq	%r13;		
+	pushq	%r14;		
+	pushq	%r15;
+	
+	movq	$0x10,	%rdx;	
+	movq	%rdx,	%ds;	
+	movq	%rdx,	%es;
+	
+	movq	$0,	%rsi
+	movq	%rsp,	%rdi
+
+	callq	do_nmi
+
+	jmp	RESTORE_ALL
+```
+
+
+
+`#NMI`不可屏蔽中断不是异常，而是一个外部中断，从而不会生成错误码。`#NMI`应该执行中断处理过程，这段程序最后会跳转到`do_nmi`函数进行处理。了解了我们处理函数的入口后，我们接下来看一下几种错误码的组成。
+
+在继续前进之前，我们先来梳理一下现在学习的内容，我画了一张图方便大家理解：
+
+<img src="pics/lab2/%E5%BC%82%E5%B8%B8%E5%A4%84%E7%90%86%E8%BF%87%E7%A8%8B.png" style="zoom: 33%;" />
+
+
+
+
+
+#### \#TS异常错误码格式
+
+<img src="pics/lab2/05.d04z.009.png" alt="img" style="zoom:50%;" />
+
+- 段选择子:索引IDT,GDT,LDT等描述符表内的描述符
+- EXT: 如果EXT是1,就说明当前异常是在程序向外投递外部事件的过程中触发,比如说想抛出异常结果抛出异常的过程的时候异常了.
+- IDT: 如果是1,就说明段选择子记录的是IDT表中的描述符;为0说明是GDT或LDT的内容.
+- TI: 当IDT是0的时候生效, 当TI为1则说明段选择子指向LDT内的描述符,否则指向GDT的描述符.
+
+为了将这些错误进行报告,我们这样封装即可:
+
+```C
+/**
+ * 无效的TSS段, 可能发生在:访问TSS段或者任务切换时(这个时候也访问TSS)
+ * 包含一个错误码, 该错误码由五个部分组成:
+ * - 段选择子\ TI\ IDT\ EXT _ 保留位
+ * @param rsp 段基址
+ * @param error_code 错误码,由段选择子\ TI\ IDT\ EXT _ 保留位五个部分组成
+ * 
+ */ 
+void do_invalid_TSS(unsigned long rsp,unsigned long error_code)
+{
+	unsigned long * p = NULL;
+	p = (unsigned long *)(rsp + 0x98);
+	printk("do_invalid_TSS(10),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",error_code , rsp , *p);
+
+	switch (error_code & 6) {
+        case 2: printk("Ref to IDT");break; // IDT
+        case 4: printk("Ref to LDT");break; // LDT
+        case 0: printk("Ref to GDT");break; // GDT
+        default: printk("Ref ERROR!!!");break; // 错误码出错了
+    }
+
+	printk("Segment Selector Index:%#010x\n",error_code & 0xfff8);
+
+	while(1);
+}
+```
+
+为了输出方便,我封装了`printk`宏,该宏自动将背景颜色设置为黑色,将字体设置为白色(他的实现与color_printk)完全相同,只不过默认了颜色参数.
+
+#### \#PF异常错误码格式
+
+PF错误是页错误,在进行内存引用时可能被触发：
+
+<img src="pics/lab2/05.d04z.010.png" alt="img" style="zoom: 50%;" />
+
+不同位置所代表的含义已经在上面被列举出来了，我们当前阶段只需要根据不同的情况进行输出即可。下面是处理程序：
+
+```C
+/**
+ * 页错误，在访问内存出错时出现, 输出相应的错误类型
+ * @param rsp 段基址
+ * @param error_code 错误码,由段选择子\ TI\ IDT\ EXT _ 保留位五个部分组成
+ */
+void do_page_fault(unsigned long rsp,unsigned long error_code)
+{
+	unsigned long * p = NULL;
+	unsigned long cr2 = 0;
+
+	__asm__	__volatile__("movq	%%cr2,	%0":"=r"(cr2)::"memory");
+
+	p = (unsigned long *)(rsp + 0x98);
+	printk("do_page_fault(14),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",error_code , rsp , *p);
+
+	// 如果是0，就说明是缺页异常， 否则就说明是页级保护异常
+	if(!(error_code & 0x01)) printk("Page Not-Present,\t");
+	else printk("Page is Protected!\t"); 
+
+	// 检查W/R位，如果为1就说明写入错误，否则读取错误
+	if(error_code & 0x02) printk("Write Cause Fault,\t");
+	else printk("Read Cause Fault,\t");
+
+	// 检查U/S位，1代表普通用户访问时出现错误，否则超级用户访问时错误
+	if(error_code & 0x04) printk("Fault in user(3)\t");
+	else printk("Fault in supervisor(0,1,2)\t");
+
+	// RSVD位，如果为1则说明页表的保留项引发异常
+	if(error_code & 0x08) printk(",Reserved Bit Cause Fault\t");
+
+	// I/D位，如果为1则说明获取指令时发生异常
+	if(error_code & 0x10) printk(",Instruction fetch Cause Fault");
+
+	printk("\n");
+	printk("CR2:%#018lx\n",cr2);
+
+	while(1);
+}
+```
+
+相信到此为止，大家一定对异常处理的入口有了一定的理解了。我们的异常处理部分也到此为止了，如果大家有兴趣的话，可以在本次提交的源代码仓库中查看如何`printk`各种异常。当然，这样的做法是没有什么意义的，它只能让我们看到发生了什么样的异常，然后宕机，而不能进行真正的处理，我们可能需要在后面再进行真正的处理。
+
+
+
+
+

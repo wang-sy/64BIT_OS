@@ -1,29 +1,27 @@
+C_FILE_LIST=main position printk font gate trap
+C_FILE_BUILD_GOALS=$(foreach file, $(C_FILE_LIST), ./build/$(file).o)
+
+ASM_FILE_LIST=head entry
+ASM_FILE_BUILD_GOALS=$(foreach file, $(ASM_FILE_LIST), ./build/$(file).o)
+
+define \n
+
+
+endef
+
 all: system
 # 生成kernel.bin
 	objcopy -I elf64-x86-64 -S -R ".eh_frame" -R ".comment" -O binary ./build/system ./build/kernel.bin
 
-system: head.o main.o position.o printk.o font.o Kernel.lds
+system: Kernel.lds build_all_c_code build_all_asm_code
 # 
-	ld -b elf64-x86-64 ./build/head.o ./build/main.o ./build/position.o ./build/printk.o ./build/font.o -T Kernel.lds -o ./build/system
+	ld -b elf64-x86-64 $(ASM_FILE_BUILD_GOALS) $(C_FILE_BUILD_GOALS) -T Kernel.lds -o ./build/system
 
-head.o: head.S
-# 生成kernel head binary file
-	gcc -E head.S > ./build/head.s
-	as --64 -o ./build/head.o ./build/head.s
+build_all_c_code:
+	$(foreach file, $(C_FILE_LIST), gcc -mcmodel=large -fno-builtin -fno-stack-protector -m64 -c $(file).c -o ./build/$(file).o  ${\n})
 
-main.o:
-# 编译main.c内核主程序(只编译不链接)
-	gcc -mcmodel=large -fno-builtin -m64 -c main.c -o ./build/main.o
-
-position.o:
-	gcc  -mcmodel=large -fno-builtin -m64 -c position.c -o ./build/position.o
-
-printk.o:
-	gcc  -mcmodel=large -fno-builtin -m64 -c printk.c -o ./build/printk.o -fno-stack-protector
-
-font.o:
-	gcc  -mcmodel=large -fno-builtin -m64 -c font.c -o ./build/font.o 
-
+build_all_asm_code:
+	$(foreach file, $(ASM_FILE_LIST), gcc -E $(file).S > ./build/$(file).s  ${\n} as --64 -o ./build/$(file).o ./build/$(file).s ${\n})
 
 clean: 
 	rm -rf ./build/*
