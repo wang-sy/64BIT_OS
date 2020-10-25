@@ -2412,5 +2412,77 @@ void do_page_fault(unsigned long rsp,unsigned long error_code)
 
 
 
+#### 编译验证
+
+##### 编译
+
+相信大家也有相同的体会，kernel的makefile脚本，随着文件数量的增多，变得越来越长了，为了解决这个问题，这里更改了makefile脚本，如下：
+
+```makefile
+C_FILE_LIST=main position printk font gate trap
+C_FILE_BUILD_GOALS=$(foreach file, $(C_FILE_LIST), ./build/$(file).o)
+
+ASM_FILE_LIST=head entry
+ASM_FILE_BUILD_GOALS=$(foreach file, $(ASM_FILE_LIST), ./build/$(file).o)
+
+define \n
 
 
+endef
+
+all: system
+# 生成kernel.bin
+        objcopy -I elf64-x86-64 -S -R ".eh_frame" -R ".comment" -O binary ./build/system ./build/kernel.bin
+
+system: Kernel.lds build_all_c_code build_all_asm_code
+# 
+        ld -b elf64-x86-64 $(ASM_FILE_BUILD_GOALS) $(C_FILE_BUILD_GOALS) -T Kernel.lds -o ./build/system
+
+build_all_c_code:
+        $(foreach file, $(C_FILE_LIST), gcc -mcmodel=large -fno-builtin -fno-stack-protector -m64 -c $(file).c -o ./build/$(file).o  ${\n})
+
+build_all_asm_code:
+        $(foreach file, $(ASM_FILE_LIST), gcc -E $(file).S > ./build/$(file).s  ${\n} as --64 -o ./build/$(file).o ./build/$(file).s ${\n})
+
+clean: 
+        rm -rf ./build/*
+
+```
+
+这里的实现方式就是循环编译没一个文件，然后最后在一起链接。
+
+##### 验证
+
+这里对main.c进行了更改，这里对异常处理函数进行了限定， 对TSS进行了读取与初始化，相应的，我们需要将head.S中读取TSS的代码删除，以避免重复读取，产生错误：
+
+```C
+doEnter(&globalPosition);
+
+    // TSS段描述符的段选择子加载到TR寄存器
+    load_TR(8);
+
+    // 初始化
+	set_tss64(
+        0xffff800000007c00, 0xffff800000007c00, 
+        0xffff800000007c00, 0xffff800000007c00, 
+        0xffff800000007c00, 0xffff800000007c00,
+        0xffff800000007c00, 0xffff800000007c00, 
+        0xffff800000007c00, 0xffff800000007c00
+    );
+
+	sys_vector_init(); // 初始化IDT表，确定各种异常的处理函数
+
+    int a = 1 / 0;
+
+	while(1){
+        ;
+    }
+```
+
+
+
+最后执行结果如下：
+
+<img src="pics/lab2/image-20201026024056882.png" alt="image-20201026024056882" style="zoom:67%;" />
+
+可以看到，屏幕上已经打印出了相应的错误。
