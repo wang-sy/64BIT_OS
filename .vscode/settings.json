@@ -3,6 +3,15 @@
         "cstdlib": "c",
         "*.tcc": "c",
         "memory": "c",
-        "*.txx": "c"
+        "*.txx": "c",
+        "array": "cpp",
+        "chrono": "cpp",
+        "functional": "cpp",
+        "istream": "cpp",
+        "ostream": "cpp",
+        "ratio": "cpp",
+        "tuple": "cpp",
+        "type_traits": "cpp",
+        "utility": "cpp"
     }
 }

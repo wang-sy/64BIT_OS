@@ -2486,3 +2486,204 @@ doEnter(&globalPosition);
 <img src="pics/lab2/image-20201026024056882.png" alt="image-20201026024056882" style="zoom:67%;" />
 
 可以看到，屏幕上已经打印出了相应的错误。
+
+
+
+## 初级内存管理单元
+
+在这一节中，我们讨论的是入门级的内存管理内容主要包括下面三个部分：
+
+- 获取物理内容信息
+- 统计可用物理内存页数量
+- 分配物理页
+
+
+
+### 简单回顾
+
+在开始这一节的学习之前，我们来回顾一下上一章中，操作系统启动的过程中都做了些什么：
+
+<img src="pics/lab2/操作系统启动流程.png" style="zoom: 33%;" />
+
+注意我标记为黑色的部分，在loader中，我们已经对计算机的内存信息进行了检查，并且将检测的信息进行了存储，相应的代码如下：
+
+```assembly
+;=======	获取内存的类型及其对应的地址范围
+
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0400h		;row 4
+	mov	cx,	44
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	StartGetMemStructMessage
+	int	10h
+
+	mov	ebx,	0
+	mov	ax,	0x00
+	mov	es,	ax
+	mov	di,	MemoryStructBufferAddr	
+
+Label_Get_Mem_Struct:
+
+	mov	eax,	0x0E820
+	mov	ecx,	20
+	mov	edx,	0x534D4150
+	int	15h
+	jc	Label_Get_Mem_Fail
+	add	di,	20
+    inc	dword	[MemStructNumber]
+
+	cmp	ebx,	0
+	jne	Label_Get_Mem_Struct
+	jmp	Label_Get_Mem_OK
+
+Label_Get_Mem_Fail:
+
+    mov	dword	[MemStructNumber],	0
+
+	mov	ax,	1301h
+	mov	bx,	008Ch
+	mov	dx,	0500h		;row 5
+	mov	cx,	23
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetMemStructErrMessage
+	int	10h
+
+Label_Get_Mem_OK:
+	
+	mov	ax,	1301h
+	mov	bx,	000Fh
+	mov	dx,	0600h		;row 6
+	mov	cx,	29
+	push	ax
+	mov	ax,	ds
+	mov	es,	ax
+	pop	ax
+	mov	bp,	GetMemStructOKMessage
+	int	10h	
+
+```
+
+这里我们通过`int 15h`中断，将一个个内存块的信息进行保存，我们不用完整的复习`int 15h`的相关内容，只需知道三个关键点：
+
+- 一、 `int 15h`将内存信息保存到了 `es:di`，这里每次做完一次之后`di`都会增加20
+
+- 二、存储的内存信息格式如下：
+
+  | 偏移 | 名称         | 意义                 |
+  | ---- | ------------ | :------------------- |
+  | 0    | BaseAddrLow  | 基地址的低 32 位     |
+  | 4    | BaseAddrHigh | 基地址的高 32 位     |
+  | 8    | LengthLow    | ⻓度(字节)的低 32 位 |
+  | 12   | LengthHigh   | ⻓度(字节)的高 32 位 |
+  | 16   | Type         | 这个内存区域的类型   |
+
+  我们可以看到，这里的信息实际上就是在用`起点 + 长度`的方法来描述一块内存，其中，内存类型如下：
+
+  | 取值 | 名称                 | 意义                                                         |
+  | ---- | -------------------- | ------------------------------------------------------------ |
+  | 1    | AddressRangeMemory   | 可以被OS使用的内存                                           |
+  | 2    | AddressRangeReserved | 正在使用的区域或者不能系统保留不能使用的区域                 |
+  | 其他 | 未定义               | 各个具体机器会有不同的意义，在这里我们暂时不用关心，将它视为AddressRangeReserved即可 |
+
+- 三、这些信息被保存在`0x7e00`地址下
+
+
+
+那剩下的事情就变得简单且枯燥了，我们只需要从`0x7e00`开始读取，一次读取20字节，20字节中包含5个整形，每个整型变量都表示一个参数。剩下的事情都会变得非常自然，我们只需要读取即可。
+
+
+
+### 读取内存分布
+
+在这里，我们新建一个文件`memory.h/memory.c`来描述内存相关的操作，为了描述每个内存块，我们建立一个和上面表格结构相同的结构体：
+
+```C
+/**
+ * 用于描述一个内存块的结构体
+ * baseAddrHigh : baseAddrLow 拼接起来就是基地址
+ * lengthHigh : lengthLow 拼接起来就是内存块长度
+ * type 内存类型， 1 ：可被os使用， 2 ： 正在使用或不可使用 其他：没有意义
+ */
+struct Memory_Block_E820{
+    unsigned int baseAddrLow;
+    unsigned int baseAddrHigh;
+    unsigned int lengthLow;
+    unsigned int lengthHigh;
+    unsigned int type;
+};
+```
+
+除此之外，我们还需要一个函数来对内存信息进行初始化，以读取存储在内存`0x7e00`为首的内存信息,就叫他`init_memory`,我们在`memory.h`中对其进行声明，在`memory.c`中对其进行实现即可：
+
+```C
+/**
+ * 读取内存中存储的内存块信息
+ * 默认读取基地址为0x7e00，这里填写线性地址
+ * 会输出每一块内存的信息，并且输出总可用内存
+ */ 
+void init_memory(){
+	unsigned long TotalMem = 0 ;
+	struct Memory_Block_E820 *p = NULL;	
+	
+	printk("Display Physics Address MAP,Type(1:RAM,2:ROM or Reserved,3:ACPI Reclaim Memory,4:ACPI NVS Memory,Others:Undefine)\n");
+	p = (struct Memory_Block_E820 *)0xffff800000007e00; // 将基地址对齐
+
+    // 循环遍历，输出内存信息
+	for(int i = 0;i < 32;i++){
+
+        // 输出内存信息
+		printk("Address:%#010x,%08x\tLength:%#010x,%08x\tType:%#010x\n", \
+            p->baseAddrHigh,p->baseAddrLow,p->lengthHigh,p->lengthLow,p->type);
+
+        // 统计可用内存
+		unsigned long tmp = 0;
+		if(p->type == 1){ // 如果内存可用
+			tmp = p->lengthHigh;
+			TotalMem +=  p->lengthLow;
+			TotalMem +=  tmp  << 32;
+		}
+
+		if(p->type > 4)
+			break;		
+	}
+
+    // 输出总可用内存
+	printk("OS Can Used Total RAM:%#018lx\n",TotalMem);
+}
+
+```
+
+这个函数并没有进行存储，而直接将信息进行了输出，我们在`main`中添加相应的输出，进行查看（需要注意的是，你需要把除0错误去掉，要不然会宕机），更改后的程序片段如下：
+
+```C
+sys_vector_init(); // 初始化IDT表，确定各种异常的处理函数
+
+init_memory(); // 输出所有内存信息
+
+while(1){
+    ;
+}
+```
+
+由于我们新建了一个`memory`，所以我们需要向`makefile`文件中添加相应的描述：
+
+```makefile
+C_FILE_LIST=main position printk font gate trap memory
+C_FILE_BUILD_GOALS=$(foreach file, $(C_FILE_LIST), ./build/$(file).o)
+```
+
+添加的方法非常简单，我们只需要将memory添加到`C_FILE_LIST`的尾部即可，可见我们之前的写法带来了极大的便利。
+
+运行结果如下：
+
+<img src="pics/lab2/image-20201027005727113.png" alt="image-20201027005727113" style="zoom:50%;" />
+
+我们的这个虚拟机一共有`0x7ff8f000`的内存，换算一下大约是2G，这与我们之前做配置的时候分配的值是相近的，不完全相同是因为我们其他部分还占用了一部分的内存。
+

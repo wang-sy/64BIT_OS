@@ -2,6 +2,7 @@
 #include "printk.h"
 #include "gate.h"
 #include "trap.h"
+#include "memory.h"
 
 #define COLOR_OUTPUT_ADDR (int *)0xffff800000a00000
 #define SCREEN_ROW_LEN 900 // 一共有多少行
@@ -81,7 +82,7 @@ void Start_Kernel() {
 
 	sys_vector_init(); // 初始化IDT表，确定各种异常的处理函数
 
-    int a = 1 / 0;
+    init_memory(); // 输出所有内存信息
 
 	while(1){
         ;
