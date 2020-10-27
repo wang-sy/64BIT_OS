@@ -1,6 +1,8 @@
 #include "memory.h"
 #include "lib.h"
 
+struct Global_Memory_Descriptor memory_management_struct = {{0},0};;
+
 
 /**
  * 读取内存中存储的内存块信息
@@ -18,21 +20,40 @@ void init_memory(){
 	for(int i = 0;i < 32;i++, p++){
 
         // 输出内存信息
-		printk("Address:%#010x,%08x\tLength:%#010x,%08x\tType:%#010x\n", \
-            p->baseAddrHigh,p->baseAddrLow,p->lengthHigh,p->lengthLow,p->type);
+		printk("Address:%#018lx\tLength:%#018lx\tType:%#010x\n", p->baseAddr,p->length,p->type);
 
         // 统计可用内存
 		unsigned long tmp = 0;
-		if(p->type == 1){ // 如果内存可用
-			tmp = p->lengthHigh;
-			TotalMem +=  p->lengthLow;
-			TotalMem +=  tmp  << 32;
-		}
+		if(p->type == 1) TotalMem += p->length;
 
-		if(p->type > 4)
-			break;		
+		// 存储内存块信息， 更新长度
+		memory_management_struct.e820[i] = (struct Memory_Block_E820){p->baseAddr, p->length, p->type};
+		memory_management_struct.e820_length = i;
+
+		if(p->type > 4) break;		
 	}
 
     // 输出总可用内存
 	printk("OS Can Used Total RAM:%#018lx\n",TotalMem);
+
+	TotalMem = 0;
+
+	for(int i = 0; i <= memory_management_struct.e820_length; i ++){
+		
+		if(memory_management_struct.e820[i].type != 1) continue;
+		
+		unsigned long start, end;
+		start = PAGE_2M_ALIGN(memory_management_struct.e820[i].baseAddr); // 计算开头的向后对齐地址
+		end = (
+			(memory_management_struct.e820[i].baseAddr + memory_management_struct.e820[i].length)
+			 >> PAGE_2M_SHIFT
+		) << PAGE_2M_SHIFT; // 计算结尾的向前对齐地址
+
+		if(end <= start) continue;
+
+        TotalMem += (end - start) >> PAGE_2M_SHIFT;
+		  
+		printk("OS Can Used Total 2M PAGEs:%#010x=%010d\n",TotalMem,TotalMem);
+
+	}
 }

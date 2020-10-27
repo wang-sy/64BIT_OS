@@ -2687,3 +2687,138 @@ C_FILE_BUILD_GOALS=$(foreach file, $(C_FILE_LIST), ./build/$(file).o)
 
 我们的这个虚拟机一共有`0x7ff8f000`的内存，换算一下大约是2G，这与我们之前做配置的时候分配的值是相近的，不完全相同是因为我们其他部分还占用了一部分的内存。
 
+
+
+### 统计可用内存
+
+在上一节中，我们的内存块的描述信息分了高低位来表示，但显然这不大合理。所以我们准备用新的方法来表示（就是把两个int合成一个long）：
+
+```C
+/**
+ * 用于描述一个内存块的结构体
+ * baseAddr 基地址
+ * length 内存块长度
+ * type 内存类型， 1 ：可被os使用， 2 ： 正在使用或不可使用 其他：没有意义
+ */
+struct Memory_Block_E820{
+    unsigned long baseAddr;
+    unsigned long length;
+    unsigned int type;
+}__attribute__((packed));
+```
+
+同时，为了记录全局信息，我们使用一个全局描述表来进行存储，同样，全局描述表也是一个结构体：
+
+```C
+/**
+ * 全局的内存信息描述
+ */
+struct Global_Memory_Descriptor{
+	struct Memory_Block_E820 	e820[32];
+	unsigned long   e820_length;	
+};
+
+extern struct Global_Memory_Descriptor memory_management_struct;
+```
+
+相应的，我们需要对这部分的读取代码进行更改：
+
+```C
+// 循环遍历，输出内存信息
+for(int i = 0;i < 32;i++, p++){
+
+    // 输出内存信息
+    printk("Address:%#018lx\tLength:%#018lx\tType:%#010x\n", p->baseAddr,p->length,p->type);
+
+    // 统计可用内存
+    unsigned long tmp = 0;
+    if(p->type == 1) TotalMem += p->length;
+
+    // 存储内存块信息， 更新长度
+    memory_management_struct.e820[i] = (struct Memory_Block_E820){p->baseAddr, p->length, p->type};
+    memory_management_struct.e820_length = i;
+
+    if(p->type > 4) break;		
+}
+```
+
+更改后运行结果如下：
+
+<img src="pics/lab2/image-20201027115027420.png" alt="image-20201027115027420" style="zoom:67%;" />
+
+实际上结果没有改变，因为我们只不过是换了个类型而已，内存空间是没有变的
+
+接下来，我们要对结构体数组中的可用物理内存段进行2 MB物理页边界对齐，并统计出可用物理页的总量，为此，需要进行一些宏定义，这些宏定义我们就用作者给出的，如下：
+
+```C
+#define PTRS_PER_PAGE    512 // 页表中条目的个数
+
+#define PAGE_OFFSET ((unsigned long)0xffff800000000000) // 内核层起始线性地址
+
+#define PAGE_1G_SHIFT    30 // 1GB = 1Byte << 30
+#define PAGE_2M_SHIFT    21 // 2MB = 1Byte << 21
+#define PAGE_4K_SHIFT    12 // 4kB = 1Byte << 12
+
+#define PAGE_2M_SIZE     (1UL << PAGE_2M_SHIFT) // 2M内存的大小
+#define PAGE_4K_SIZE     (1UL << PAGE_4K_SHIFT) // 4K内存的大小
+
+// Mask， 类似于子网掩码
+#define PAGE_2M_MASK     (~ (PAGE_2M_SIZE - 1)) // 1111..0000 
+#define PAGE_4K_MASK     (~ (PAGE_4K_SIZE - 1)) // 1111..0000 
+
+// 将参数addr按2 MB页的上边界对齐
+#define PAGE_2M_ALIGN(addr)   (((unsigned long)(addr) + PAGE_2M_SIZE - 1) & PAGE_2M_MASK)
+#define PAGE_4K_ALIGN(addr)   (((unsigned long)(addr) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
+
+// 将内核层虚拟地址转换成物理地址
+#define Virt_To_Phy(addr)  ((unsigned long)(addr) - PAGE_OFFSET)
+
+// 将物理地址转换成内核层虚拟地址
+#define Phy_To_Virt(addr)  ((unsigned long *)((unsigned long)(addr) + PAGE_OFFSET))
+```
+
+
+
+各个宏的含义已经在上面的代码中定义，需要特别注意的是对齐的方法：
+
+- 首先有一个MASK， 这个mask和计算机网络中的子网掩码非常相似，我们可以把内存块地址的前半部分看做计算机网络中的公网ip，公网ip加上偏移，就是完整的ip地址，这里我们的mask就像是子网掩码，1标记的地方描述了当前的地址空间处于那个页中（当然这个页是由我们进行划分的）。
+- 对齐想要达到的目的就是：`0xxxxxxxxxx`对应的内存地址，都对应`0xxxxxxx000`这个内存块， 这里的对齐方式不是向下对齐，而是向上对齐，所以要先加上`块大小-1`再进行取余
+
+<img src="pics/lab2/向后对齐方式.png" style="zoom: 33%;" />
+
+接下来我们用这个宏来统计可用页的数量：
+
+```C
+TotalMem = 0;
+
+for(int i = 0; i <= memory_management_struct.e820_length; i ++){
+
+    if(memory_management_struct.e820[i].type != 1) continue;
+
+    unsigned long start, end;
+    start = PAGE_2M_ALIGN(memory_management_struct.e820[i].baseAddr); // 计算开头的向后对齐地址
+    end = (
+        (memory_management_struct.e820[i].baseAddr + memory_management_struct.e820[i].length)
+        >> PAGE_2M_SHIFT
+    ) << PAGE_2M_SHIFT; // 计算结尾的向前对齐地址
+
+    if(end <= start) continue;
+
+    TotalMem += (end - start) >> PAGE_2M_SHIFT;
+
+    printk("OS Can Used Total 2M PAGEs:%#010x=%010d\n",TotalMem,TotalMem);
+
+}
+```
+
+
+
+<img src="pics/lab2/image-20201027144920851.png" alt="image-20201027144920851" style="zoom:67%;" />
+
+可以看到，我们一共有1022个可用的页，当然了，这种取页的方法存在他的局限性，比如说：每一段都要掐头去尾（因为头向后对齐，尾向前对齐），段越多，浪费的空间也就越多，但是我们还是统计出了页的信息！
+
+
+
+### 分配可用的物理页
+
+现在我们手中掌握了1022个物理页，那么下一步就是去管理他们了。
