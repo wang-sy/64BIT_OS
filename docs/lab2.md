@@ -2821,4 +2821,651 @@ for(int i = 0; i <= memory_management_struct.e820_length; i ++){
 
 ### 分配可用的物理页
 
-现在我们手中掌握了1022个物理页，那么下一步就是去管理他们了。
+#### 组织结构
+
+现在我们手中掌握了1022个物理页，那么下一步就是去管理他们了。为了更好的管理内存，我们创建了如下的结构体：
+
+```C
+/**
+ * 描述一个页的基本信息
+ * @param zone_struct 指向本页所属的区域结构体
+ * @param PHY_address 页的物理地址
+ * @param attribute 页的属性
+ * @param reference_count 描述该页的引用次数
+ * @param age 描述该页的创建时间
+ */
+struct Page {
+    struct Zone *        zone_struct;
+    unsigned long        PHY_address;
+    unsigned long        attribute;
+    unsigned long        reference_count;
+    unsigned long        age;
+};
+```
+
+
+
+```C
+/**
+ * 可用物理内存区域
+ * @param pages_group 属于该zone的page的列表
+ * @param pages_length 当前区域包含的页的数量
+ * @param zone_start_address 本区域第一个页对齐后地址
+ * @param zone_end_address  本区域最后一个页对齐后地址
+ * @param zone_length 本区域经过页对齐后的地址长度
+ * @param attribute 空间属性
+ * @param GMD_struct 指针，指向全局描述Global_Memory_Descriptor 的实例化对象 memory_management_struct
+ * @param page_using_count 已经使用的页数量
+ * @param page_free_count 没有被使用的页的数量
+ * @param total_pages_link 本区域物理页被引用次数之和
+ */
+struct Zone {
+    struct Page *        pages_group;
+    unsigned long        pages_length;
+    unsigned long        zone_start_address;
+    unsigned long        zone_end_address;
+    unsigned long        zone_length;
+    unsigned long        attribute;
+
+    struct Global_Memory_Descriptor * GMD_struct;
+
+    unsigned long        page_using_count;
+    unsigned long        page_free_count;
+    unsigned long        total_pages_link;
+};
+```
+
+
+
+相信通过上面两个结构体的定义，大家能够理解这里内存管理的组织方式了：
+
+<img src="pics/lab2/内存组织.png" style="zoom: 25%;" />
+
+其中，`B`代表不能被我们使用的内存，那么相应的，我们全局的内存描述也需要做出相应的变化：
+
+```C
+/**
+ * 全局的内存信息描述
+ * @param e820 cpu探索内存后存储的信息
+ * @param e820_length 记录有效的内存的长度，配合e820使用
+ * @param bits_map 物理地址空间页映射位图
+ * @param bits_size 物理地址空间页数量
+ * @param bits_length 物理地址空间页映射位图长度
+ * @param pages_struct 	指向全局struct page结构体数组的指针
+ * @param pages_size struct page结构体总数
+ * @param pages_length struct page结构体数组长度
+ * @param zones_struct 指向全局zone结构体数组的指针
+ * @param zones_size zone结构体数量
+ * @param zones_length zone数组长度
+ * @param start_code 内核程序起始段代码地址
+ * @param end_code 内核程序结束代码段地址
+ * @param end_data 内核程序结束数据段地址
+ * @param end_brk 内核程序的结束地址
+ * @param end_of_struct 内存页管理结构的结尾地址
+ */
+struct Global_Memory_Descriptor{
+	struct Memory_Block_E820 	e820[32];
+	unsigned long               e820_length;	
+
+    unsigned long *   bits_map;
+    unsigned long     bits_size;
+    unsigned long     bits_length;
+
+    struct Page *     pages_struct;
+    unsigned long     pages_size;
+    unsigned long     pages_length;
+
+    struct Zone *     zones_struct;
+    unsigned long     zones_size;
+    unsigned long     zones_length;
+
+    unsigned long     start_code , end_code , end_data , end_brk;
+
+    unsigned long     end_of_struct;
+};
+```
+
+#### 初始化全局描述子存储空间
+
+各个变量的含义已经列出，其中`bits`相关字段是`struct page`结构体的位图映射，它们是一一对应的关系。`start_code`、`end_code`、`end_data`、`end_brk`这4个成员变量，它们用于保存内核程序编译后的各段首尾地址。同时，为了获得这四个标记符的位置，我们需要使用编译器生成的全局变量：
+
+```C
+// 标记编译器生成的区间
+extern char _text;
+extern char _etext;
+extern char _edata;
+extern char _end;
+```
+
+现在，有了这些结构体之后，我们需要将这些结构体的内容进行填充，首先在主函数中，修改`start_code`、`end_code`、`end_data`、`end_brk`这4个成员变量：
+
+```C
+memory_management_struct.start_code = (unsigned long)& _text;
+memory_management_struct.end_code   = (unsigned long)& _etext;
+memory_management_struct.end_data   = (unsigned long)& _edata;
+memory_management_struct.end_brk    = (unsigned long)& _end;
+```
+
+接下来我们开始初始化`bits_map`，在初始化前需要先改变上面初始化有效内存块信息时的条件：
+
+```C
+// 循环遍历，输出内存信息
+for(int i = 0;i < 32;i++, p++){
+
+    if(p->type > 4 || p->length == 0 || p->type < 1) break;		
+    // 输出内存信息
+    printk("Address:%#018lx\tLength:%#018lx\tType:%#010x\n", p->baseAddr,p->length,p->type);
+
+    // 统计可用内存
+    unsigned long tmp = 0;
+    if(p->type == 1) TotalMem += p->length;
+
+    // 存储内存块信息， 更新长度
+    memory_management_struct.e820[i] = (struct Memory_Block_E820){p->baseAddr, p->length, p->type};
+    memory_management_struct.e820_length = i;
+
+}
+```
+
+这样的做法是为了截断并且剔除脏数据。完成后，再对`bits_map`进行初始化：
+
+```C
+/**
+* ==========初始化 全局描述子中 与 bits map 相关的成员变量 ==========*/
+// 计算bits_map的首地址， 计算方法为：内核程序的结束地址向后对齐， 即： 内核地址结束后的4k向后对齐
+memory_management_struct.bits_map = (unsigned long *)((memory_management_struct.end_brk + PAGE_4K_SIZE - 1) & PAGE_4K_MASK);
+// 计算bits_size， 即bits_map的大小， 其大小为最后一块可用内存地址/ 每一页的大小， 即：所有内存划分为页的页数
+memory_management_struct.bits_size = TotalMem >> PAGE_2M_SHIFT; 
+// 计算位图的内存长度
+memory_management_struct.bits_length = (((unsigned long)(TotalMem >> PAGE_2M_SHIFT) + sizeof(long) * 8 - 1) / 8) & ( ~ (sizeof(long) - 1));
+// 将bitsmap置位，全都置位为1
+memset(memory_management_struct.bits_map,0xff,memory_management_struct.bits_length);
+
+// 输出相关信息
+printk("bits_map : %d, bits_size: %d, bits_length: %d\n", 
+       memory_management_struct.bits_map, memory_management_struct.bits_size, memory_management_struct.bits_length);
+```
+
+其中，每一步在做什么已经在注释中写得非常清楚了，相信大家也能够模糊的了解到`bits_map`与页之间的关系——即`bits_map`与内存中的页结构一一对应。
+
+执行结果如下：
+
+<img src="pics/lab2/image-20201028175808354.png" alt="image-20201028175808354" style="zoom:67%;" />
+
+这里大家可能存在一个疑问：为什么这里统计出来有2048页，上面统计出来有1022页?有这个疑问的人一看就是前面没仔细看:see_no_evil:，前面在统计页数的时候，统计的是可用的页数。这里在记录页数的时候，统计方法是可用地址的最后一块的地址 / 每一页的大小，两种统计方法完全不同。
+
+
+
+接下来按照相同的思路，我们初始化`zones`以及`pages`：
+
+```C
+/**
+* ==========初始化 pages ==========*/
+// 记录本数组的初始地址， 初始化方法： bits_map的结束地址向后对齐
+memory_management_struct.pages_struct = (struct Page *)(((unsigned long)memory_management_struct.bits_map + memory_management_struct.bits_length + PAGE_4K_SIZE - 1) & PAGE_4K_MASK);
+// 记录页的数量
+memory_management_struct.pages_size = TotalMem >> PAGE_2M_SHIFT;
+// 记录page占用的物理空间
+memory_management_struct.pages_length = ((TotalMem >> PAGE_2M_SHIFT) * sizeof(struct Page) + sizeof(long) - 1) & ( ~ (sizeof(long) - 1));
+// 全都清空为0
+memset(memory_management_struct.pages_struct,0x00,memory_management_struct.pages_length);
+
+// 输出相关信息
+printk("pages_struct : %d, pages_size: %d, pages_length: %d\n", 
+       memory_management_struct.pages_struct, memory_management_struct.pages_size, memory_management_struct.pages_length);
+/**
+* ==========初始化 zones ==========*/
+// 同样的方法：pages_struct首地址加物理长度
+memory_management_struct.zones_struct = (struct Zone *)(((unsigned long)memory_management_struct.pages_struct + memory_management_struct.pages_length + PAGE_4K_SIZE - 1) & PAGE_4K_MASK);
+// 初始化的时候，还没有zones，zones需要在后期进行统计
+memory_management_struct.zones_size   = 0;
+// 计算zone占用的内存空间，暂时按照五个zone来计算
+memory_management_struct.zones_length = (5 * sizeof(struct Zone) + sizeof(long) - 1) & (~(sizeof(long) - 1));
+// 全部清空为0
+memset(memory_management_struct.zones_struct,0x00,memory_management_struct.zones_length);	//init zones memory
+// 输出相关信息
+printk("zones_struct : %d, zones_size: %d, zones_length: %d\n", 
+       memory_management_struct.zones_struct, memory_management_struct.zones_size, memory_management_struct.zones_length);
+```
+
+<img src="pics/lab2/image-20201028180730562.png" alt="image-20201028180730562" style="zoom:67%;" />
+
+
+
+这一小节中，我们将全局描述子`Global_Memory_Descriptor`的存储空间进行了初始化，接下来我们要对其中的值进行填充。
+
+
+
+#### 初始化全局描述子内容
+
+在前面的讲解中，我们已经搞明白了全局描述子、zones、pages之间的关系了，这里只需要实现即可。
+
+```C
+/**
+		 * ==========初始化 zones & pages 的内容信息 ==========
+		 */
+for(int curBlock = 0; curBlock <= memory_management_struct.e820_length; curBlock ++ ){
+
+    // 如果内存块不可用，那么跳过
+    if(memory_management_struct.e820[curBlock].type != 1) continue;
+
+    /*===================计算开始、结尾地址===================*/
+
+    // 和上面统计可用页一样， 这里起点是右规后的地址
+    unsigned long start = PAGE_2M_ALIGN(memory_management_struct.e820[curBlock].baseAddr);
+    // 计算结尾的向前对齐地址
+    unsigned long end = (
+        (memory_management_struct.e820[curBlock].baseAddr + memory_management_struct.e820[curBlock].length)
+        >> PAGE_2M_SHIFT
+    ) << PAGE_2M_SHIFT; 
+
+    // 如果没有可用空间就跳过
+    if(end <= start) continue;
+
+    /*===================初始化zone===================*/
+
+    // 指针指向
+    struct Zone* curZone = memory_management_struct.zones_struct + memory_management_struct.zones_size;
+    memory_management_struct.zones_size ++;
+
+    curZone->zone_start_address = start;
+    curZone->zone_end_address = end;
+    curZone->zone_length = end - start;
+
+    curZone->page_using_count = 0;
+    curZone->page_free_count = (curZone->zone_length >> PAGE_2M_SHIFT);
+
+    curZone->total_pages_link = 0; // 总引用为0
+
+    curZone->attribute = 0;
+    curZone->GMD_struct = &memory_management_struct; // 这里取的是地址，因为前面的是指针
+
+    curZone->pages_length = (curZone->zone_length >> PAGE_2M_SHIFT);
+    // 基地址+起点所在页的数量
+    curZone->pages_group =  (struct Page *)(memory_management_struct.pages_struct + (start >> PAGE_2M_SHIFT));
+
+    /*===================初始化Pages===================*/
+    struct Page* curPage = curZone->pages_group; // 指向最开始的页地址
+
+    // 遍历该内存区域中的每一个页， 写完一个页之后， 就接着写下一个页， 直到把当前zone中的页写完
+    for(int curPageId = 0; curPageId < curZone->pages_length; curPageId ++, curPage ++){
+
+        curPage->zone_struct = curZone; // 将当前的页指向当前的zone
+        // 当前page的物理地址就是： 当前zone的物理地址 + 第curPageId * 每一页的大小，其中curPageId从0开始
+        curPage->PHY_address = start + PAGE_2M_SIZE * curPageId;
+        curPage->attribute = 0;
+
+        curPage->reference_count = 0;
+        curPage->age = 0;
+
+        // 把当前struct page结构体所代表的物理地址转换成bits_map映射位图中对应的位。
+        // 这里的bits_map之中，每个变量都是一个unsigned long 类型的 64位整数
+        // 每一位可以表示该位所对应的page是否使用
+        *(memory_management_struct.bits_map + ((curPage->PHY_address >> PAGE_2M_SHIFT) >> 6)) ^= 
+            1UL << (curPage->PHY_address >> PAGE_2M_SHIFT) % 64;
+    }
+}
+```
+
+我们看一下整体的流程：
+
+- 我们先初始化了Zone的信息，对于每一个内存块，如果该块的`Type`是1，则添加一个Zone，zone的范围是块的首地址向后对齐，尾地址向前对齐，这样的做法能够让Zone分配页的时候足够安全。
+- 分配完zone后，我们循环遍历zone中每一块可用的2MB\_Page，将其分配为一个Page，并将该Page的所属Zone指向当前的Zone
+
+这有一点不好理解，需要我们特殊强调。回忆一下我们如何初始化`bits_map`：
+
+```C
+// 计算位图的内存长度
+memory_management_struct.bits_length = (((unsigned long)(TotalMem >> PAGE_2M_SHIFT) + sizeof(long) * 8 - 1) / 8) & ( ~ (sizeof(long) - 1));
+```
+
+这里在做的事情是：将页的数量除八后以八为单位向后对齐，那么接下来，除八有什么意义么？实际上，我们结合这一段代码中的：
+
+```C
+// 把当前struct page结构体所代表的物理地址转换成bits_map映射位图中对应的位。
+// 这里的bits_map之中，每个变量都是一个unsigned long 类型的 64位整数
+// 每一位可以表示该位所对应的page是否使用
+*(memory_management_struct.bits_map + ((curPage->PHY_address >> PAGE_2M_SHIFT) >> 6)) ^= 
+            1UL << (curPage->PHY_address >> PAGE_2M_SHIFT) % 64;
+```
+
+就会非常好理解了：bitsmap的每一位对应着一个page是否可用，那么一个字节就能够表达8个page；到此为止相信大家一定能理解为什么需要除8后对齐以及bitsmap与page之间一对一的关系了。（不懂的回去多看几遍）他们之间的关系实际上就是bitsmap的每一位都是用来表示一个page是否被使用，在初始化时，bitsmap被置为全1，在初始化page的时候，将可以使用的page置为0，代表可用。
+
+在中间插入一些printk函数，输出一些提示信息，如下（下一小节会根据这些信息来进行一些讲解）：
+
+<img src="pics/lab2/image-20201028235015837.png" alt="image-20201028235015837" style="zoom:67%;" />
+
+
+
+
+
+#### 进行初始化的收尾工作
+
+先来讲为什么要收尾：可以注意到，第一段内存的大小不足2MB，无法构成一个页，所以他不会被初始化。这是一个随机事件么？不！这是因为0~2 MB的物理内存页包含多个物理内存段，其中还囊括了内核程序。所以必须对该页进行特殊初始化：
+
+
+
+```C
+/**
+* ==========对第一段内存进行初始化（第一段比较特殊，包含多个物理内存段所以要特殊处理）==========
+*/
+// 将pages_struct的初始地址指向
+memory_management_struct.pages_struct->zone_struct = memory_management_struct.zones_struct;
+
+memory_management_struct.pages_struct->PHY_address = 0UL;
+memory_management_struct.pages_struct->attribute = 0;
+memory_management_struct.pages_struct->reference_count = 0;
+memory_management_struct.pages_struct->age = 0;
+
+memory_management_struct.zones_length = (memory_management_struct.zones_size * sizeof(struct Zone) + sizeof(long) - 1) & ( ~ (sizeof(long) - 1));
+```
+
+
+
+接下来我们还需要进行一些其他的设置：
+
+```C
+// 两个不同类型的地址区间，现在付的值暂时没有意义
+ZONE_DMA_INDEX = 0;
+ZONE_NORMAL_INDEX = 0;
+
+for(int i = 0;i < memory_management_struct.zones_size;i++) {
+    struct Zone * z = memory_management_struct.zones_struct + i;
+    printk("zone_start_address:%#018lx,zone_end_address:%#018lx,\n\
+		zone_length:%#018lx,pages_group:%#018lx,pages_length:%#018lx\n", \
+           z->zone_start_address,z->zone_end_address,z->zone_length,z->pages_group,z->pages_length);
+    // 如果起始地址符合条件，那么就将其设置为非映射区间
+    if(z->zone_start_address == 0x100000000)
+        ZONE_UNMAPED_INDEX = i;
+}
+	
+	// 记录向后规格化后的结束地址
+memory_management_struct.end_of_struct = (unsigned long)((unsigned long)
+	memory_management_struct.zones_struct + memory_management_struct.zones_length + sizeof(long) * 32
+) & ( ~ (sizeof(long) - 1));
+```
+
+这段程序主要是记录从哪一段开始没有被页表映射，以及全局内存描述结构体的结束地址。接下来，我们将全局描述结构体所在的页以及该页前面的页描述为：`正在使用+经过页表映射的页+内核初始化程序+内核层页`，程序如下：
+
+```C
+/**
+* ==========输出提示信息以及将前面的页设置为 正在使用+经过页表映射的页+内核初始化程序+内核层页==========
+*/
+
+printk("start_code:%#018lx,end_code:%#018lx,end_data:%#018lx, end_brk:%#018lx,end_of_struct:%#018lx\n",memory_management_struct.start_code, memory_management_struct.end_code,memory_management_struct.end_data,memory_management_struct.end_brk, memory_management_struct.end_of_struct);
+// 获取结构体所在页
+int curPageId = Virt_To_Phy(memory_management_struct.end_of_struct) >> PAGE_2M_SHIFT;
+
+// 对前面的页进行初始化
+for(int pageId = 0;pageId <= curPageId;pageId++) 
+    page_init(memory_management_struct.pages_struct + pageId,PG_PTable_Maped | PG_Kernel_Init | PG_Active | PG_Kernel);
+```
+
+这里一使用了一些宏，这些宏的部分定义如下：
+
+```C
+// 经过页表映射的页
+#define PG_PTable_Maped	(1 << 0)
+// 内核初始化程序
+#define PG_Kernel_Init	(1 << 1)
+// 被引用的页
+#define PG_Referenced	(1 << 2)
+// 脏的页
+#define PG_Dirty	(1 << 3)
+// 使用中的页
+#define PG_Active	(1 << 4)
+// 内核层页
+#define PG_Kernel	(1 << 7)
+// 共享属性
+#define PG_K_Share_To_U	(1 << 8)
+```
+
+不同关键词的含义已经在注释中写清楚了，不同的位代表不同的属性，相互之间或起来互不影响，想要判断有没有该属性直接与该数字按位与就可以与出来了。接下来我们看一下`page_init`函数：
+
+```C
+/**
+ *  @param page 指针，指向想要被初始化的 page
+ *  @param flag 初始化时的参数
+ */
+void page_init(struct Page * page,unsigned long flag){
+	if(!page->attribute) { // 如果该页没有使用过
+        *(memory_management_struct.bits_map + ((page->PHY_address >> PAGE_2M_SHIFT) >> 6)) |= 1UL << (page->PHY_address >> PAGE_2M_SHIFT) % 64;
+        page->attribute = flag; // 将状态置为flag
+        page->reference_count++; // 被使用了，ref ++
+		// 对对应的zone进行修改
+        page->zone_struct->page_using_count++; 
+        page->zone_struct->page_free_count--;
+        page->zone_struct->total_pages_link++;
+    }
+	// 如果已经被引用，或是有共享属性，那么就不需要在调整可用页数，而是直接改变引用数量，并且调整页的属性即可
+	else if((page->attribute & PG_Referenced) || (page->attribute & PG_K_Share_To_U) || (flag & PG_Referenced) || (flag & PG_K_Share_To_U)) {
+		page->attribute |= flag;
+        page->reference_count++;
+        page->zone_struct->total_pages_link++;
+	}
+	// 既没有被引用，又没有共享属性，而且状态也不为空，那么就 添加页表属性，并置位bit映射位图的相应位。
+	else {
+		*(memory_management_struct.bits_map + ((page->PHY_address >> PAGE_2M_SHIFT) >> 6)) |= 1UL << (page->PHY_address >> PAGE_2M_SHIFT) % 64;
+        page->attribute |= flag;
+	}
+
+	return 0UL;
+}
+
+```
+
+这个函数中包含着三种情况：
+
+- 如果该页从来没有使用过，那么就直接将flag赋值上去，并且添加引用，降低可用页数量
+- 如果已经被引用或共享，那么就对没有的属性进行添加（使用或运算符进行运算），并且添加引用
+- 如果都不是，那么仅仅是添加页表属性，并置位`bit`映射位图的相应位。
+
+
+
+### 清空页表项
+
+```C
+Global_CR3 = Get_gdt();
+
+color_printk(INDIGO,BLACK,"Global_CR3\t:%#018lx\n",Global_CR3);
+color_printk(INDIGO,BLACK,"*Global_CR3\t:%#018lx\n",*Phy_To_Virt(Global_CR3) & (~0xff));
+color_printk(PURPLE,BLACK,"**Global_CR3\t:%#018lx\n",*Phy_To_Virt(*Phy_To_Virt (Global_CR3) & (~0xff)) & (~0xff));
+
+for(i = 0;i < 10;i++)
+    *(Phy_To_Virt(Global_CR3) + i) = 0UL;
+
+flush_tlb();
+```
+
+首先使用`get_gdt`获取CR3寄存器的基地址，CR3是页目录基址寄存器，保存页目录表的物理地址，也就是说：`*Global_CR3`表示的就是页表的地址，`**Global_CR3`表示的就是页表的第一项的内容。紧接着为了消除一致性页表映射，将页表的前十项清零，并且使用`flush_tlb`使清零生效。
+
+其中，Get_gdt与`flush_tlb`代码如下，这里就不做讲解了：
+
+```C
+#define flush_tlb()                                                 \
+do                                                                  \
+{                                                                   \
+    unsigned long    tmpreg;                                        \
+    __asm__ __volatile__     (                                      \
+                               "movq    %%cr3,    %0       \n\t"    \
+                               "movq    %0,       %%cr3    \n\t"    \
+                               :"=r"(tmpreg)                        \
+                               :                                    \
+                               :"memory"                            \
+                             );                                     \
+}while(0)
+
+unsigned long * Get_gdt()
+{
+    unsigned long * tmp;
+    __asm__ __volatile__    (
+                              "movq    %%cr3,    %0    \n\t"
+                              :"=r"(tmp)
+                              :
+                              :"memory"
+                            );
+    return tmp;
+}
+```
+
+
+
+程序执行结果如下：
+
+<img src="pics/lab2/image-20201029010044909.png" alt="image-20201029010044909" style="zoom:50%;" />
+
+
+
+### 分配物理内存页函数
+
+在分配的过程中，为了描述需要的内存的类型，有了下面三个宏定义：
+
+```C
+// 内核使用的内存
+#define ZONE_DMA	(1 << 0)
+// 普通内存
+#define ZONE_NORMAL	(1 << 1)
+// 不被页表映射的内存
+#define ZONE_UNMAPED	(1 << 2)
+```
+
+我们来梳理一下应该怎么去分配内存：
+
+- 首先根据不同的需求，查找不同的zone
+- 在满足需求的段中，查找可用page
+- 将可用page进行`init`操作，然后返回
+
+在这个过程中，我们将`zone_dma`和`zone_NORMAL`都设置为了0，因为我们暂时不会对这两种内存进行查找，在日后我们还会对其进行更改。而`UNMAPD`非映射内存的区间我们已经定义。剩下的事情，只需要按照需求进行遍历即可，我们在`memory.h`中定义一个函数
+
+```C
+struct Page* malloc_page(int zone_select,int number,unsigned long page_flags);
+```
+
+并且在`memory.c`中实现它，首先我们需要根据需求的内存类型确定查找范围：
+
+```C
+int begin_zone, end_zone;
+
+// 根据zone_select选择开始的zone
+switch (zone_select){
+    case ZONE_DMA:
+        begin_zone = 0;
+        end_zone = ZONE_DMA_INDEX;
+        break;
+    case ZONE_NORMAL:
+        begin_zone = ZONE_DMA_INDEX;
+        end_zone = ZONE_NORMAL_INDEX;
+        break;
+    case ZONE_UNMAPED:
+        begin_zone = ZONE_UNMAPED_INDEX;
+        end_zone = memory_management_struct.zones_size;
+        break;
+
+    default:
+        printk("Malloc ERROR ! NO SUCH KIND OF MEMORY!");
+        return NULL;
+        break;
+}
+```
+
+如果需要的内存类型有误，那么最后的结果将为空。接下来我们逐一检索：
+
+```C
+// 遍历每一个zone进行检索
+for(int cur_zone_id = begin_zone; cur_zone_id < end_zone; cur_zone_id ++){
+
+    struct Zone* cur_zone = memory_management_struct.zones_struct + cur_zone_id; // 获取当前zone
+
+    // 如果当前的Zone中，没有足够的页，那么就找下一个
+    if(cur_zone->page_free_count < number) continue;
+
+    unsigned long start = (cur_zone->zone_start_address >> PAGE_2M_SHIFT); // 开始的页号
+    unsigned long end = (cur_zone->zone_end_address >> PAGE_2M_SHIFT); // 结束的页号 
+
+    unsigned long cur_jump_width = 64 - (start % 64); // 当前想要走到64位对齐的下一个位置需要走多远
+
+    // 顺序检查
+    for(int cur_page_id = start; cur_page_id < end; cur_page_id += (cur_page_id % 64 == 0) ? 64 : cur_jump_width ){
+        unsigned long *cur_bits_map = memory_management_struct.bits_map + (cur_page_id >> 6); // 将指针指向当前page所在的bitsmap元素
+        unsigned long shift_index = (cur_page_id % 64);// 确定当前bitsmap元素的哪一位描述当前页
+
+        for(int check_page_id = shift_index; check_page_id < 64 - shift_index; check_page_id ++){
+            if( !(((*cur_bits_map >> check_page_id) |(*(cur_bits_map + 1) << (64 - check_page_id))) &
+                  (number == 64 ? 0xffffffffffffffffUL : ((1UL << number) - 1))) ){
+                // 如果当前bitsmap元素中，0 ~ number 的没有被使用，那么就将其分配
+                unsigned long  st_page;
+                st_page = cur_page_id + check_page_id - 1;
+                // 循环初始化
+                for(int init_page_id = 0; init_page_id < number; init_page_id ++){
+                    struct Page* init_page_ptr = memory_management_struct.pages_struct + st_page + init_page_id;
+                    page_init(init_page_ptr,page_flags);
+                }
+                // 找到了就返回页
+                return (struct Page *)(memory_management_struct.pages_struct + st_page);
+            }
+        }
+    }
+}
+// 没找到就返回空 
+return NULL;
+```
+
+这里实现的方法非常的弱，简而言之就是这样：
+
+- 检查每一个bitsmap， 从开头进行检查（如果当前对齐64位的话，那么就从第0位开始，如果没有就从当前位开始）：
+  - 有没有连续number个可以分配的page？没有的话就找下一个bitsmap元素，有的话就返回
+
+通过这个算法我们就看出来，这个算法有非常多的bug：
+
+- 空间够但是分配不了的问题（随便一想就有很多）：
+  - 一、不在同一个bitsmap元素中，但是连续空间足够
+  - 二、在同一个bitsmap元素中，但是最开始的被分配了
+  - 等等
+
+这两种情况我画了个图：
+
+<img src="pics/lab2/不能完成的情况.png" style="zoom: 25%;" />
+
+
+
+在未来，我们会对这种算法进行优化，如果我们使用这种内存分配算法，那么我们写出来的操作系统一定是一场灾难。但是现在，我们的主要关注点在于如何组织内存、如何描述内存、内存块、zone、page之间的关系，以及如何使用bitsmap位图来描述特定页是否被使用。这才是这一节的重点。
+
+
+
+接下来我们来验证一下：
+
+```C
+init_memory(); // 输出所有内存信息
+
+printk("alloc pages!\n");
+
+struct Page* pages = alloc_pages(ZONE_NORMAL,64,PG_PTable_Maped | PG_Active | PG_Kernel);
+
+for(int i = 0;i <= 64;i++){
+    printk("page%d\tattribute:%#018lx\taddress:%#018lx\t",i,(pages + i)->attribute,(pages + i)->PHY_address);
+    i++;
+    printk("page%d\tattribute:%#018lx\taddress:%#018lx\n",i,(pages + i)->attribute,(pages + i)->PHY_address);
+}
+
+printk("memory_management_struct.bits_map:%#018lx\n",*memory_management_struct.bits_map);
+printk("memory_management_struct.bits_map:%#018lx\n",*(memory_management_struct.bits_map + 1));
+```
+
+结果如下：
+
+<img src="pics/lab2/image-20201029035159870.png" alt="image-20201029035159870" style="zoom:67%;" />
+
+额，我们输出的太多了，效果非常不好，于是我决定把前面乱输出的给去了，最后显示如下：
+
+<img src="pics/lab2/image-20201029035526447.png" alt="image-20201029035526447" style="zoom:67%;" />
+
+- 前64个（0~63）内存页结构的属性值已被设置为`0x91` 
+
+- 物理地址从`0x200000`开始，这与`zone_start_address`成员变量记录的地址值是一致的
+
+结果是正确的，但是这个函数仍然有非常非常多的bug，但是正如前面所说，这一部分最重要的是认识、学习内存的组织形式等等基础知识。
+
+
+
+## 中断处理
+

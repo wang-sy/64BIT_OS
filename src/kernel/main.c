@@ -49,11 +49,11 @@ void Start_Kernel() {
         SCREEN_ROW_LEN, SCREEN_COL_LEN,  // 屏幕行列
         0, 0, // 当前光标位置
         CHAR_ROW_LEN, CHAR_COL_LEN, // 字符行列
-        COLOR_OUTPUT_ADDR, sizeof(int) * SCREEN_COL_LEN * SCREEN_ROW_LEN
+        COLOR_OUTPUT_ADDR, (SCREEN_ROW_LEN * SCREEN_COL_LEN * 4 + PAGE_4K_SIZE - 1) & PAGE_4K_MASK
     };
     
     doClear(myPos);
-
+    /*
     int curChar; 
     for(curChar = 40; curChar < 130; curChar ++){ // 输出给出的表格中的每一个字符
         doPrint(myPos, 0xffffff00, 0x00000000, font_ascii[curChar]);
@@ -67,7 +67,7 @@ void Start_Kernel() {
     doEnter(&globalPosition);
     color_printk(YELLOW,BLACK,"Hello World!");
     doEnter(&globalPosition);
-
+    */
     // TSS段描述符的段选择子加载到TR寄存器
     load_TR(8);
 
@@ -82,9 +82,26 @@ void Start_Kernel() {
 
 	sys_vector_init(); // 初始化IDT表，确定各种异常的处理函数
 
+    // 该变量来源于memory.c， 对其中的关键地址信息进行填充
+    memory_management_struct.start_code = (unsigned long)& _text;
+	memory_management_struct.end_code   = (unsigned long)& _etext;
+	memory_management_struct.end_data   = (unsigned long)& _edata;
+	memory_management_struct.end_brk    = (unsigned long)& _end;
+
     init_memory(); // 输出所有内存信息
 
-	while(1){
+	struct Page* pages = alloc_pages(ZONE_NORMAL,64,PG_PTable_Maped | PG_Active | PG_Kernel);
+
+	for(int i = 0;i <= 64;i++){
+		printk("page%d\tattribute:%#018lx\taddress:%#018lx\t",i,(pages + i)->attribute,(pages + i)->PHY_address);
+		i++;
+		printk("page%d\tattribute:%#018lx\taddress:%#018lx\n",i,(pages + i)->attribute,(pages + i)->PHY_address);
+	}
+
+	printk("memory_management_struct.bits_map:%#018lx\n",*memory_management_struct.bits_map);
+	printk("memory_management_struct.bits_map:%#018lx\n",*(memory_management_struct.bits_map + 1));
+
+    while(1){
         ;
     }
 }

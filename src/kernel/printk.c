@@ -4,7 +4,6 @@
 #include "linkage.h"
 #include "position.h"
 
-extern inline int strlen(char* String);
 
 /**
  * 给出一段字符串，将字符串转换为数字
