@@ -1,4 +1,5 @@
 #include "position.h"
+#include "lib.h"
 
 // 实现position中的一些函数
 char* defaultFill = "                                                                ";
@@ -29,6 +30,7 @@ void doEnter(struct position * curPos){
 void doClear(struct position * curPos){
     curPos->XPosition = 0;
     curPos->YPosition = 0;
+    memset(curPos->FB_addr, 0xff, curPos->FB_length);
 }
 
 /**

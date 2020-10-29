@@ -3,6 +3,7 @@
 #include "gate.h"
 #include "trap.h"
 #include "memory.h"
+#include "interrupt.h"
 
 #define COLOR_OUTPUT_ADDR (int *)0xffff800000a00000
 #define SCREEN_ROW_LEN 900 // 一共有多少行
@@ -100,7 +101,7 @@ void Start_Kernel() {
 
 	printk("memory_management_struct.bits_map:%#018lx\n",*memory_management_struct.bits_map);
 	printk("memory_management_struct.bits_map:%#018lx\n",*(memory_management_struct.bits_map + 1));
-
+    init_interrupt();
     while(1){
         ;
     }
