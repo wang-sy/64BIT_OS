@@ -66,9 +66,9 @@ void init_interrupt(){
     io_out8(0xa1,0x02);
     io_out8(0xa1,0x01);
 
-    //8259A-M/S    OCW1
-    io_out8(0x21,0x00);
-    io_out8(0xa1,0x00);
+    //8259A-M/S	OCW1
+	io_out8(0x21,0xfd);
+	io_out8(0xa1,0xff);
 
     sti();
 }
@@ -76,6 +76,9 @@ void init_interrupt(){
 
 // 中断处理程序do_IRQ
 void do_IRQ(unsigned long regs,unsigned long nr) { 
-	printk("do_IRQ:%#08x\t",nr); // 中断处理（直接输出）
-	io_out8(0x20,0x20); // 向主芯片返回信息
+	
+    printk("do_IRQ:%#08x\t",nr);
+    unsigned char x = io_in8(0x60);
+    printk("key code:%#08x\n",x);
+    io_out8(0x20,0x20);
 }

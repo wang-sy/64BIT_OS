@@ -30,7 +30,7 @@ void doEnter(struct position * curPos){
 void doClear(struct position * curPos){
     curPos->XPosition = 0;
     curPos->YPosition = 0;
-    memset(curPos->FB_addr, 0xff, curPos->FB_length);
+    memset(curPos->FB_addr, 0x00, curPos->FB_length);
 }
 
 /**

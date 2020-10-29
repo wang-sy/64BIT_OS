@@ -3869,10 +3869,86 @@ void do_IRQ(unsigned long regs,unsigned long nr) {
 之后的输出可能会很多，我们更改`do_clear()`函数，让其刷新整个屏幕（刷新缓冲区）：
 
 ```C
-
+/**
+ * 给出当前的位置结构体，将光标置为(0, 0)[暂时不实现清空屏幕的功能]
+ * @param curPos 一个指针，指向被操作的位置结构体
+ */ 
+void doClear(struct position * curPos){
+    curPos->XPosition = 0;
+    curPos->YPosition = 0;
+    memset(curPos->FB_addr, 0x00, curPos->FB_length);
+}
 ```
 
+当输出超过当前屏幕之后，屏幕会被清空（就像翻页了一样，只不过翻不回来了），执行结果如下：
 
+<img src="pics/lab2/image-20201029204708809.png" alt="image-20201029204708809" style="zoom:50%;" />
+
+是的，没啥区别，就是好看了一点点。
 
 ## 键盘驱动
 
+在开始键盘驱动这个部分之前，我们先来明确一下目的：就像上一节和上上节一样，我们在当前阶段的目的是学习、了解一个雏形，而非掌握全部知识。所以在这一节键盘驱动中，也是同理，我们将学习一个简单的键盘驱动模型，并且进行简单的实现。首先我们来看一张图：
+
+<img src="pics/lab2/05.d04z.021.png" alt="img" style="zoom: 25%;" />
+
+在这个过程中，主要涉及到三个设备：
+
+- 8259：主芯片，刚才已经介绍过了
+- 8042：键盘控制器芯片，用于与键盘连通，用于处理相关的信号，也可以用来处理鼠标相关的信息
+- 8048：键盘上面的芯片，当用户按键后会将相应的信息发送到8042
+
+当键盘被按下后，8048会向8042发送信号；8042接收到信号后会将其编码为统一的键盘扫描码，并且将其放置在输出缓冲区中待处理器读取。如果处理器没有读取、清空的话，那么8042就不会接收8048传输的信息。
+
+
+
+接下来我们要干的事情就是：接收中断信号，输出编码信息，清空缓冲区：
+
+想要完成这些更改非常简单：
+
+```C
+/**
+ * 初始化中断处理程序的地址
+ */
+void init_interrupt(){
+
+    // 装载 IDT Table
+    for(int i = 32;i < 56;i++)
+        set_intr_gate(i , 2 , interrupt[i - 32]);
+
+    printk("8259A init \n");
+
+    // 设置寄存器
+    //8259A-master    ICW1-4
+    io_out8(0x20,0x11);
+    io_out8(0x21,0x20);
+    io_out8(0x21,0x04);
+    io_out8(0x21,0x01);
+
+    //8259A-slave    ICW1-4
+    io_out8(0xa0,0x11);
+    io_out8(0xa1,0x28);
+    io_out8(0xa1,0x02);
+    io_out8(0xa1,0x01);
+
+    //8259A-M/S	OCW1
+	io_out8(0x21,0xfd);
+	io_out8(0xa1,0xff);
+
+    sti();
+}
+
+
+// 中断处理程序do_IRQ
+void do_IRQ(unsigned long regs,unsigned long nr) { 
+	
+    printk("do_IRQ:%#08x\t",nr);
+    unsigned char x = io_in8(0x60);
+    printk("key code:%#08x\n",x);
+    io_out8(0x20,0x20);
+}
+```
+
+更改结束后结果如下（我在bochs的界面中一顿操作后的结果）：
+
+<img src="pics/lab2/image-20201029234240137.png" alt="image-20201029234240137" style="zoom:50%;" />
