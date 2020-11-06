@@ -1,5 +1,12 @@
 #include "lib.h"
 
+inline struct List * list_next(struct List * entry)
+{
+	if(entry->next != NULL)
+		return entry->next;
+	else
+		return NULL;
+}
 
 void list_init(struct List * list)
 {

@@ -1,6 +1,8 @@
 #include "position.h"
 #include "lib.h"
 
+struct position globalPosition;
+
 // 实现position中的一些函数
 char* defaultFill = "                                                                ";
 

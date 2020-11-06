@@ -13,6 +13,8 @@
         "tuple": "cpp",
         "type_traits": "cpp",
         "utility": "cpp",
-        "cstring": "c"
+        "cstring": "c",
+        "complex": "c",
+        "system_error": "c"
     }
 }

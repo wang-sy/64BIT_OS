@@ -62,6 +62,11 @@
 // 不被页表映射的内存
 #define ZONE_UNMAPED	(1 << 2)
 
+typedef struct {unsigned long pml4t;} pml4t_t;
+#define	mk_mpl4t(addr,attr)	((unsigned long)(addr) | (unsigned long)(attr))
+#define set_mpl4t(mpl4tptr,mpl4tval)	(*(mpl4tptr) = (mpl4tval))
+
+
 
 #define flush_tlb()						\
 do								\

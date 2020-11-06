@@ -4,6 +4,7 @@
 #include "trap.h"
 #include "memory.h"
 #include "interrupt.h"
+#include "task.h"
 
 #define COLOR_OUTPUT_ADDR (int *)0xffff800000a00000
 #define SCREEN_ROW_LEN 900 // 一共有多少行
@@ -91,17 +92,10 @@ void Start_Kernel() {
 
     init_memory(); // 输出所有内存信息
 
-	struct Page* pages = alloc_pages(ZONE_NORMAL,64,PG_PTable_Maped | PG_Active | PG_Kernel);
-
-	for(int i = 0;i <= 64;i++){
-		printk("page%d\tattribute:%#018lx\taddress:%#018lx\t",i,(pages + i)->attribute,(pages + i)->PHY_address);
-		i++;
-		printk("page%d\tattribute:%#018lx\taddress:%#018lx\n",i,(pages + i)->attribute,(pages + i)->PHY_address);
-	}
-
-	printk("memory_management_struct.bits_map:%#018lx\n",*memory_management_struct.bits_map);
-	printk("memory_management_struct.bits_map:%#018lx\n",*(memory_management_struct.bits_map + 1));
     init_interrupt();
+
+    task_init();
+
     while(1){
         ;
     }

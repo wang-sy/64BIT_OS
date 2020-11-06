@@ -3952,3 +3952,686 @@ void do_IRQ(unsigned long regs,unsigned long nr) {
 更改结束后结果如下（我在bochs的界面中一顿操作后的结果）：
 
 <img src="pics/lab2/image-20201029234240137.png" alt="image-20201029234240137" style="zoom:50%;" />
+
+## 进程管理
+
+接下来我们进入到进程管理的模块，在这个模块中，我们先来了解什么是进程管理；进程管理需要管理哪些资源；我们会实现简单的进程机制并且创建出第一个进程；最终实现进程管理相应的内容，接下来我们先看第一个问题：
+
+### 进程管理是什么？
+
+首先需要说明的是，在这里我们讨论的是比较古老的CPU进程管理的模型。
+
+<img src="pics/lab2/进程管理框架.png" style="zoom: 25%;" />
+
+我们都知道，对于单核单线程的CPU来说，CPU在同一时刻只能执行一条指令，不能执行多条指令。但是回想一下我们平时使用计算机的应用场景：我们在办公，带开了VSCode，又打开了QQ准备看看消息，那么这里的VSCode和QQ是两个毫不相干的app，他们两个就可以被看作两个进程，我们想用谁就用谁，但是从本质上来说他们两个不可能同时运行，只能以极快的速度进行交替，来达到同时运行的效果。那么在这个过程中来控制不同的进程如何切换、何时切换的就是进程管理机制了。
+
+
+
+### 进程控制结构体
+
+在上一小节中，我们知道了什么是进程，现在需要思考的是：想要管理进程，需要记录进程的哪些信息？
+
+
+
+#### task_struct——进程信息描述结构体
+
+```C
+/**
+ * 描述进程的资源使用情况的结构体
+ * @param list 	双向链表，用于连接各个进程控制结构体
+ * @param state 用于记录进程的状态，随时可能改变，所以使用volatile关键字声明
+ * @param flags 进程标志，表示（线程、进程、内核线程）
+ * @param mm 内存空间分布描述结构体，用来描述程序段信息、内存页表等
+ * @param thread 进程切换时使得保留信息
+ * @param addr_limit 进程地址空间范围 0x00000000,00000000 - 0x00007FFF,FFFFFFFF为应用程，0xffff,8000,0000,0000 - 0xffff,ffff,ffff,ffff 为内核层
+ * @param pid 进程id
+ * @param counter 进程可用时间片
+ * @param signal 进程的信号量
+ * @param priority 进程的优先级
+ */
+struct task_struct {
+    struct List list;
+    volatile long state;
+    unsigned long flags;
+
+    struct mm_struct *mm;
+    struct thread_struct *thread;
+
+    /*0x0000,0000,0000,0000 - 0x0000,7fff,ffff,ffff 用户层*/
+    /*0xffff,8000,0000,0000 - 0xffff,ffff,ffff,ffff 内核层*/
+    unsigned long addr_limit; 
+
+    long pid;
+    long counter;
+    long signal;
+    long priority;
+};
+```
+
+这个结构体描述了一个进程需要拥有的一些基本信息，他们的意义已经在注释中写好了。其中的mm_struct、thread_struct还没有定义。除此之外，还是用了`volatile`关键词来声明`state`，这是因为进程的状态可能会在意想不到的地方被修改，所以需要每次使用该变量的时候，都从内存中直接读取，这样就可以保证使用该变量的最新版本了。
+
+
+
+
+
+#### mm_struct——内存分布描述结构体
+
+在这一小节中，我们来看一下上节中提到的`mm_struct`结构体：
+
+```C
+/**
+ * 用于描述一个进程的内存空间的结构体
+ * @param pgd 内存页表指针(页目录基地址与页表属性的组合值)
+ * @param start_code 代码段起始地址
+ * @param end_code 代码段结束地址
+ * @param start_data 数据段起始地址
+ * @param end_data 数据段结束地址
+ * @param start_rodata 只读数据段起始地址
+ * @param end_rodata 只读数据段结束地址
+ * @param start_brk 堆区起始地址
+ * @param end_brk 堆区结束地址
+ * @param start_stack 应用层栈基址
+ * 
+ */
+struct mm_struct {
+    pml4t_t *pgd;// 指向一个页表
+
+    unsigned long start_code,end_code;
+    unsigned long start_data,end_data;
+    unsigned long start_rodata,end_rodata;
+    unsigned long start_brk,end_brk;
+    unsigned long start_stack;
+};
+```
+
+同理，可以通过注释就可以了解到一个进程对应的内存部分的描述信息了。
+
+这里的`pml4t_t`的定义如下：
+
+```C
+typedef struct {unsigned long pml4t;} pml4t_t;
+#define	mk_mpl4t(addr,attr)	((unsigned long)(addr) | (unsigned long)(attr))
+#define set_mpl4t(mpl4tptr,mpl4tval)	(*(mpl4tptr) = (mpl4tval))
+```
+
+
+
+
+
+#### thread_struct——进程调度切换现场
+
+```C
+/**
+ * 用于保存进程调度、切换的现场
+ * @param rsp0 内核层栈基地址
+ * @param rip 内核层代码指针
+ * @param rsp 内核层当前栈指针
+ * @param fs 相应寄存器
+ * @param gs  相应寄存器
+ * @param cr2 相应寄存器
+ * @param trap_nr 异常号
+ * @param error_code 错误码
+ */
+struct thread_struct {
+    unsigned long rsp0;
+
+    unsigned long rip;
+    unsigned long rsp;
+
+    unsigned long fs;
+    unsigned long gs;
+
+    unsigned long cr2;
+    unsigned long trap_nr;
+    unsigned long error_code;
+};
+```
+
+
+
+#### task_union——使用联合体分配内核层的栈与进程描述子空间
+
+
+
+**什么是联合体？**
+
+联合体使用`union`来进行声明，和struct类似，在一个union中可以声明多个属性，但是不同点在于：结构体中所有成员线性排列，互不影响，联合体中所有成员都挤在一起，一定会互相影响，我们来看一下这里的`task_union`：
+
+
+
+```C
+/**
+ * task_struct和内核层栈区共用一段内存
+ * task --> stack 两者公用 stack的空间
+ */
+union task_union {
+    struct task_struct task;
+    unsigned long stack[STACK_SIZE / sizeof(unsigned long)];
+}__attribute__((aligned (8)));    //8 Bytes align
+```
+
+这里生成了一个联合体，我们来看一下他的内存结构，为了演示他的内存结构，我们来单独写一个小程序：
+
+```C
+#include<stdio.h>
+
+#define STACK_SIZE 1234
+
+union task_union {
+    int temp;
+    unsigned long stack[STACK_SIZE / sizeof(unsigned long)];
+}__attribute__((aligned (8)));    //8 Bytes align
+int main(){
+    union task_union temp;
+    printf("%ld,%ld\n", &(temp.temp), (temp.stack));
+    return 0;
+}                                              
+```
+
+运行结果如下：
+
+```C
+140736676612912,140736676612912
+```
+
+换而言之：temp成员和stack成员的首地址相同，他们享有同样的内存空间，可以通过不同类型的成员完成不同类型的调用，放到我们这个联合体中就是：
+
+<img src="pics/lab2/task_union内存情况.png" style="zoom: 25%;" />
+
+#### 将task_union实例化
+
+```C
+
+/** 实例化第一个进程 */
+
+
+struct task_struct *init_task[NR_CPUS] = {&init_task_union.task,0};
+struct mm_struct init_mm = {0};
+
+
+// 初始化调用现场
+struct thread_struct init_thread = {
+    .rsp0 = (unsigned long)(init_task_union.stack + STACK_SIZE / sizeof(unsigned long)),
+    .rsp = (unsigned long)(init_task_union.stack + STACK_SIZE / sizeof(unsigned long)),
+    .fs = KERNEL_DS,
+    .gs = KERNEL_DS,
+    .cr2 = 0,
+    .trap_nr = 0,
+    .error_code = 0
+};
+
+
+// 零号进程的实例
+union task_union init_task_union __attribute__((__section__ (".data.init_task"))) = (union task_union){
+    .task = {
+        .state = TASK_UNINTERRUPTIBLE,
+        .flags = PF_KTHREAD,
+        .mm = &init_mm,
+        .thread = &init_thread,
+        .addr_limit = 0xffff80000000000,
+        .pid = 0,
+        .counter = 1,
+        .signal = 0,
+        .priority = 0
+    }
+};
+
+```
+
+在这里，我们`init_task_union`放到了`.data.init_task`这个程序段中，放入后我们在链接脚本中，对该段进行特殊的说明，添加的部分如下：
+
+```kotlin
+.rodata : {
+    _rodata = .;	
+    *(.rodata)
+    _erodata = .;
+}
+
+. = ALIGN(32768);
+.data.init_task : { *(.data.init_task) }
+```
+
+实质上这里多出来了一个只读数据区，并且将刚才实例化的union放到了这个只读数据区中，实现的方法是将`.data.init_task : { *(.data.init_task) }`放置到了`.rodata`部分下。同时在放置的时候，使用32KB对齐的方法，可以避免今后申请空间时产生的隐患。
+
+
+
+#### tss_struct——IA-32e模式下的tss结构
+
+
+
+声明
+
+```C
+struct tss_struct{
+	unsigned int  reserved0;
+	unsigned long rsp0;
+	unsigned long rsp1;
+	unsigned long rsp2;
+	unsigned long reserved1;
+	unsigned long ist1;
+	unsigned long ist2;
+	unsigned long ist3;
+	unsigned long ist4;
+	unsigned long ist5;
+	unsigned long ist6;
+	unsigned long ist7;
+	unsigned long reserved2;
+	unsigned short reserved3;
+	unsigned short iomapbaseaddr;
+}__attribute__((packed));
+```
+
+实例化：
+
+```C
+struct tss_struct init_tss[NR_CPUS] = { 
+    [0 ... NR_CPUS-1] = {
+        .reserved0 = 0,
+        .rsp0 = (unsigned long)(init_task_union.stack + STACK_SIZE / sizeof(unsigned long)),
+        .rsp1 = (unsigned long)(init_task_union.stack + STACK_SIZE / sizeof(unsigned long)),
+        .rsp2 = (unsigned long)(init_task_union.stack + STACK_SIZE / sizeof(unsigned long)),
+        .reserved1 = 0,
+        .ist1 = 0xffff800000007c00,
+        .ist2 = 0xffff800000007c00,
+        .ist3 = 0xffff800000007c00,
+        .ist4 = 0xffff800000007c00,
+        .ist5 = 0xffff800000007c00,
+        .ist6 = 0xffff800000007c00,
+        .ist7 = 0xffff800000007c00,
+        .reserved2 = 0,
+        .reserved3 = 0,
+        .iomapbaseaddr = 0
+    } 
+};
+```
+
+这里的`tss`结构体使用`__attribute__((packed))`进行声明，这个我们之前也接触过了，这是紧凑结构，不会对变量进行字节对齐。
+
+
+
+
+
+#### pt_regs —— 用于记录调用现场的结构体
+
+```C
+struct pt_regs {
+    unsigned long r15;
+    unsigned long r14;
+    unsigned long r13;
+    unsigned long r12;
+    unsigned long r11;
+    unsigned long r10;
+    unsigned long r9;
+    unsigned long r8;
+    unsigned long rbx;
+    unsigned long rcx;
+    unsigned long rdx;
+    unsigned long rsi;
+    unsigned long rdi;
+    unsigned long rbp;
+    unsigned long ds;
+    unsigned long es;
+    unsigned long rax;
+    unsigned long func;
+    unsigned long errcode;
+    unsigned long rip;
+    unsigned long cs;
+    unsigned long rflags;
+    unsigned long rsp;
+    unsigned long ss;
+};
+```
+
+之后我们会实现系统调用，系统调用的执行过程与我们之前接触到的中断与异常类似。我们同样需要记录一些寄存器在调用前的值，调用前的值被存储在该结构体中。
+
+#### get_current——获取当前进程
+
+首先我们来研究一下，我们是怎么获取当前进程描述结构体的首地址的，来看下面这张图(参考自 : 《[内核 current宏解析](https://www.cnblogs.com/cherishui/p/4255690.html)》)：
+
+![image](pics/lab2/281409208002531.png)
+
+一个线程对应着两个栈，一个是内核栈还有一个是用户栈，sp指针指向内核栈。图中的结构就是我们定义的：`task_union`，现在我们知道这个`task_union`的中间地址了，我们该如何得知这个联合体的首地址呢？这就要用到刚才定义的`32Btye`对齐了，当他是三十二字节对其的情况下，我们直接将当前地址向前对齐就可以得到首地址了。当然了，值得注意的是我们的栈大小为`32Byte`，和上图所示有细微的差异，不过整体来说方法完全相同：
+
+```C
+inline struct task_struct * get_current() {
+	struct task_struct * current = NULL;
+	__asm__ __volatile__ ("andq %%rsp,%0	\n\t":"=r"(current):"0"(~32767UL));
+	return current;
+}
+
+#define current get_current()
+
+#define GET_CURRENT                    \
+    "movq    %rsp,    %rbx    \n\t"    \
+    "andq    $-32768,%rbx     \n\t"
+```
+
+
+
+### init 进程
+
+在上面的程序中，我们声明并初始化了第一个进程的描述结构体：`init_task_union`，并且了解了进程信息是如何保存的，以及如何通过地址对齐获得当前执行的进程。下面我们将继续学习进程相关的内容：
+
+#### 进程切换函数
+
+```C
+#define switch_to(prev,next)			\
+do{							\
+	__asm__ __volatile__ (	"pushq	%%rbp	\n\t"	\
+				"pushq	%%rax	\n\t"	\
+				"movq	%%rsp,	%0	\n\t"	\
+				"movq	%2,	%%rsp	\n\t"	\
+				"leaq	1f(%%rip),	%%rax	\n\t"	\
+				"movq	%%rax,	%1	\n\t"	\
+				"pushq	%3		\n\t"	\
+				"jmp	__switch_to	\n\t"	\
+				"1:	\n\t"	\
+				"popq	%%rax	\n\t"	\
+				"popq	%%rbp	\n\t"	\
+				:"=m"(prev->thread->rsp),"=m"(prev->thread->rip)		\
+				:"m"(next->thread->rsp),"m"(next->thread->rip),"D"(prev),"S"(next)	\
+				:"memory"		\
+				);			\
+}while(0)
+```
+
+可以看到，这个`switch_to`在做的事情实际上就是：将RDI和RSI寄存器的值作为参数传递给`__switch_to`函数，然后再在`__switch_to`函数中进行具体的处理，接下来继续看`__switch_to`函数：
+
+```C
+/**
+ * 进程切换的处理函数， 得到当前和下一个进程的地址， 进行切换
+ */
+void __switch_to(struct task_struct *prev,struct task_struct *next) {
+
+	init_tss[0].rsp0 = next->thread->rsp0;
+	set_tss64(init_tss[0].rsp0, init_tss[0].rsp1, init_tss[0].rsp2, init_tss[0].ist1, init_tss[0].ist2, init_tss[0].ist3, init_tss[0].ist4, init_tss[0].ist5, init_tss[0].ist6, init_tss[0].ist7);
+
+	__asm__ __volatile__("movq	%%fs,	%0 \n\t":"=a"(prev->thread->fs));
+	__asm__ __volatile__("movq	%%gs,	%0 \n\t":"=a"(prev->thread->gs));
+
+	__asm__ __volatile__("movq	%0,	%%fs \n\t"::"a"(next->thread->fs));
+	__asm__ __volatile__("movq	%0,	%%gs \n\t"::"a"(next->thread->gs));
+
+	printk("prev->thread->rsp0:%#018lx\n",prev->thread->rsp0);
+	printk("next->thread->rsp0:%#018lx\n",next->thread->rsp0);
+}
+```
+
+这里进行了如下操作：
+
+- 将`next`进程的内核层栈基地址设置到TSS结构体对应的成员变量中。
+- 保存当前进程的FS与GS段寄存器值
+- 将`next`进程保存的寄存器信息还原
+
+
+
+#### 使用进程切换函数
+
+
+
+```C
+/**
+ * 初始化init进程， 并且进行进程切换
+ */
+void task_init() {
+    struct task_struct *p = NULL;
+
+    // 初始化初始进程
+    init_mm = (struct mm_struct){
+        (pml4t_t *)Global_CR3,
+        memory_management_struct.start_code, memory_management_struct.end_code,
+        (unsigned long)&_data, memory_management_struct.end_data,
+        (unsigned long)&_rodata, (unsigned long)&_erodata,
+        0, memory_management_struct.end_brk,
+        _stack_start
+    };
+
+    set_tss64(init_thread.rsp0, init_tss[0].rsp1, init_tss[0].rsp2, init_tss[0].ist1, init_tss[0].ist2, init_tss[0].ist3, init_tss[0].ist4, init_tss[0].ist5, init_tss[0].ist6, init_tss[0].ist7);
+
+    init_tss[0].rsp0 = init_thread.rsp0;
+
+    list_init(&init_task_union.task.list); // 将当前的前后都置为自己
+    kernel_thread(init, 10, CLONE_FS | CLONE_FILES | CLONE_SIGNAL);
+    init_task_union.task.state = TASK_RUNNING;
+    p = container_of(list_next(&current->list),struct task_struct,list);
+    switch_to(current,p);
+}
+```
+
+
+
+这个函数可以分为前后两段：
+
+- 前半段中， 对`init`进程的内存结构进行了设置，其中`_stack_start`是一个全局变量，其定义如下：
+
+  ```C
+  ENTRY(_stack_start)
+      .quad init_task_union + 32768
+  ```
+
+- 后半段中`kernel_thread`使用`init`函数创建出了第二个进程，并且使用`switch_to`宏定义进行了函数之间的切换。这个被创建出来，并且切换过去的进程就是`init`进程。
+
+  这里传入的`init`如下：
+
+  ```C
+  /**
+   * 第一个进程，清空屏幕并输出Hello World! 激动人心的时刻！
+   */
+  unsigned long init(unsigned long arg) {
+      doClear(&globalPosition);
+      printk("Hello World!\ninit task is running,arg:%#018lx\n",arg);
+      return 1;
+  }
+  ```
+
+  有了`init`进程需要执行的程序，接下来我们调用了`kernel_thread`来为操作系统创建进程：
+
+  ```C
+  /**
+   * 创建进程的函数， 传入一个函数指针以及一些参数， 为操作系统创建一个进程
+   */
+  int kernel_thread(unsigned long (* fn)(unsigned long), unsigned long arg, unsigned long flags) {
+      struct pt_regs regs; // 用于保存现场的结构体
+      memset(&regs,0,sizeof(regs));
+  
+  
+      regs.rbx = (unsigned long)fn;
+      regs.rdx = (unsigned long)arg;
+  
+      regs.ds = KERNEL_DS;
+      regs.es = KERNEL_DS;
+      regs.cs = KERNEL_CS;
+      regs.ss = KERNEL_DS;
+      regs.rflags = (1 << 9);
+      regs.rip = (unsigned long)kernel_thread_func;
+  
+      return do_fork(&regs,flags,0,0);
+  }
+  ```
+
+  在这个函数中，我们创建了一个`pt_regs`结构体，来为新的进程准备执行现场的数据，我们最需要关注其中的两点
+
+  - **`regs.rip = (unsigned long)kernel_thread_func;`** :将`kernel_thread_func`的入口进行保存，在执行相应进程前，会先执行`kernel_thread_func`函数。
+
+  - **`do_fork(&regs,flags,0,0)`**：将新进程的执行现场数据传递给`do_fork`函数，进行进一步处理
+
+  - `do_fork`函数的实现
+
+    ```C
+    unsigned long do_fork(struct pt_regs * regs, unsigned long clone_flags, unsigned long stack_start, unsigned long stack_size) {
+    	struct task_struct *tsk = NULL;
+    	struct thread_struct *thd = NULL;
+    	struct Page *p = NULL;
+    	
+    	printk("alloc_pages,bitmap:%#018lx\n",*memory_management_struct.bits_map);
+    
+    	p = alloc_pages(ZONE_NORMAL,1,PG_PTable_Maped | PG_Active | PG_Kernel);// 申请页
+    
+    	printk("alloc_pages,bitmap:%#018lx\n",*memory_management_struct.bits_map);
+    
+    	tsk = (struct task_struct *)Phy_To_Virt(p->PHY_address); // 将线程描述子放到相应的页中
+    	printk("struct task_struct address:%#018lx\n",(unsigned long)tsk);
+    
+    	memset(tsk,0,sizeof(*tsk)); // 复制当前进程(复制的是势力， 没有改变指针指向的位置)
+    	*tsk = *current;
+    
+    	list_init(&tsk->list);
+    	list_add_to_before(&init_task_union.task.list,&tsk->list);	// 添加关系， 链接入进程队列并且伪造执行现场
+    	tsk->pid++;
+    	tsk->state = TASK_UNINTERRUPTIBLE;
+    
+    	thd = (struct thread_struct *)(tsk + 1);
+    	tsk->thread = thd;	
+    
+    	memcpy(regs,(void *)((unsigned long)tsk + STACK_SIZE - sizeof(struct pt_regs)),sizeof(struct pt_regs));
+    
+    	thd->rsp0 = (unsigned long)tsk + STACK_SIZE;
+    	thd->rip = regs->rip;
+    	thd->rsp = (unsigned long)tsk + STACK_SIZE - sizeof(struct pt_regs);
+    
+        // 如果
+    	if(!(tsk->flags & PF_KTHREAD)) // 进程运行于应用层空间， 就将预执行函数设置为： ret_from_intr
+    		thd->rip = regs->rip = (unsigned long)ret_from_intr;
+    
+    	tsk->state = TASK_RUNNING;
+    
+    	return 0;
+    }
+    ```
+
+    在这个函数中：
+
+    - 我们首先为新的进程设置了内存空间
+    - 然后将当前进程控制结构体中的数据复制到新分配物理页中，并进一步初始化
+    - 最后根据程序是否运行在应用层空间，设置不同的执行函数(这里的`ret_from_intr`是在异常处理阶段定义的函数，用于恢复异常处理现场)
+
+  - `kernel_thread_func`的实现
+
+    ```C
+    extern void kernel_thread_func(void);
+    __asm__ (
+    "kernel_thread_func:	\n\t"
+    "	popq	%r15	\n\t"
+    "	popq	%r14	\n\t"	
+    "	popq	%r13	\n\t"	
+    "	popq	%r12	\n\t"	
+    "	popq	%r11	\n\t"	
+    "	popq	%r10	\n\t"	
+    "	popq	%r9	\n\t"	
+    "	popq	%r8	\n\t"	
+    "	popq	%rbx	\n\t"	
+    "	popq	%rcx	\n\t"	
+    "	popq	%rdx	\n\t"	
+    "	popq	%rsi	\n\t"	
+    "	popq	%rdi	\n\t"	
+    "	popq	%rbp	\n\t"	
+    "	popq	%rax	\n\t"	
+    "	movq	%rax,	%ds	\n\t"
+    "	popq	%rax		\n\t"
+    "	movq	%rax,	%es	\n\t"
+    "	popq	%rax		\n\t"
+    "	addq	$0x38,	%rsp	\n\t"
+    /////////////////////////////////
+    "	movq	%rdx,	%rdi	\n\t"
+    "	callq	*%rbx		\n\t"
+    "	movq	%rax,	%rdi	\n\t"
+    "	callq	do_exit		\n\t"
+    );
+    ```
+
+    这一段代码负责还原进程执行现场、运行进程以及退出进程，退出进程前，会执行`do_exit`函数退出进程。
+
+    - `do_exit`实现：
+
+      ```C
+      unsigned long do_exit(unsigned long code) {
+          printk("exit task is running,arg:%#018lx\n",code);
+          while(1);
+          
+          return 0UL;
+      }
+      ```
+
+- 回到`task_init`函数， 我们后面使用宏定义`container_of`获得了对应的结构体，并且使用`switch_to`进行了切换。
+
+  ```C
+  #define container_of(ptr,type,member)                            \
+  ({    \
+      typeof(((type *)0)->member) * p = (ptr);                    \
+      (type *)((unsigned long)p - (unsigned long)&(((type *)0)->member));        \
+  })
+  ```
+
+  总体来说这段程序非常让人崩溃，其中最重要的就是：
+  
+  - 0指针的使用：
+    - `typeof(((type *)0)->member) * p = (ptr);` ：获取给出的成员的地址
+    - `(unsigned long)&(((type *)0)->member))` ： 这里的`(((type *)0)->member))`可以计算出该成员相对该结构体头部地址的相对地址，那么该成员的地址减掉该成员的相对地址，就是该结构体的地址了。
+
+### 测试与调试
+
+
+
+如果你在过程中和我一样出现了问题，你可以看一下这一部分，我的主要问题在于：触发了保护中断，这是由于内存地址错误而导致的，通过观察我们异常处理的输出（`RIP`寄存器）我的错误定位在：从`__switch_to`函数退出时，执行`ret`语句时，出现了错误。于是我联想到这可能是因为退出后跳转到的地址有误而触发的中断，遂使用`printk`语句输出了将要跳转到的`kernel_thread_func`函数的地址，果然，该函数地址存在错误，引发了cpu产生中断。
+
+
+
+解决方法： 我这里并没有对这个错误产生的原因过度追究，因为我不大想学太多汇编的知识，还是希望将注意力集中在主线任务上。但是还是可以通过以往的经验提供一条行之有效的解决方案：将`kernel_thread_func`的定义迁移到`entry.S`中，声明为全局变量即可，声明如下：
+
+```gas
+.global kernel_thread_func
+kernel_thread_func:
+	popq	%r15	
+	popq	%r14	
+	popq	%r13	
+	popq	%r12	
+	popq	%r11	
+	popq	%r10	
+	popq	%r9	
+	popq	%r8	
+	popq	%rbx	
+	popq	%rcx	
+	popq	%rdx	
+	popq	%rsi	
+	popq	%rdi	
+	popq	%rbp	
+	popq	%rax	
+	movq	%rax,	%ds	
+	popq	%rax		
+	movq	%rax,	%es	
+	popq	%rax		
+	addq	$0x38,	%rsp	
+	
+	movq	%rdx,	%rdi	
+	callq	*%rbx		
+	movq	%rax,	%rdi	
+	callq	do_exit		
+```
+
+同理，我们在`task.h`中使用`extern`语句进行引用即可。
+
+### 运行测试
+
+在main.c中的 `Start_Kernel`函数中加入`task_init`函数：
+
+```C
+    init_memory(); // 输出所有内存信息
+
+    init_interrupt();
+
+    task_init();
+```
+
+使用`bochs`虚拟机进行执行：
+
+
+
+<img src="pics/lab2/image-20201106194426641.png" alt="image-20201106194426641" style="zoom:80%;" />
+
+
+
+其中，下面的四条信息是由键盘中断产生的（要截屏得嘛），上面的信息是由我们的`init`进程以及`exit`函数输出的。
+
+
+
+这一章花了我三个周的时间，在前一个半周我就已经将全部内容基本完成了，在后一个半周中我陷入了刚才所说的bug中，再加之我还有挺多其他的事情要做，遂多次产生过想要放弃的想法，但是最后还是稳定住了心态，一次一次的找错最后才把这个问题解决。

@@ -16,7 +16,7 @@ struct position
 
     unsigned int * FB_addr; // 显示缓冲区的首地址
     unsigned long FB_length; // 显示缓冲区的长度
-}globalPosition;
+};
 
 /*引入本头文件时自动引入本变量*/
 extern struct position globalPosition;
