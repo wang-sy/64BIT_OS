@@ -1,6 +1,14 @@
+#ifndef KERNEL_TASK_H
+#define KERNEL_TASK_H
+
 #include "lib.h"
 #include "memory.h"
 #include "cpu.h"
+
+#define MAX_SYSTEM_CALL_NR 128
+
+
+
 
 // stack size 32K
 #define STACK_SIZE 32768
@@ -236,3 +244,8 @@ unsigned long init(unsigned long arg);
 
 void __switch_to(struct task_struct *prev,struct task_struct *next);
 
+typedef unsigned long (* system_call_t)(struct pt_regs * regs);
+
+void system_call();
+
+#endif

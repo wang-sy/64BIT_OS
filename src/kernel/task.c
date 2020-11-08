@@ -3,6 +3,30 @@
 #include "memory.h"
 #include "gate.h"
 
+unsigned long sys_printf(struct pt_regs * regs) {
+    printk((char *)regs->rdi);
+    return 1;
+}
+
+unsigned long no_system_call(struct pt_regs * regs) {
+    printk("no_system_call is calling,NR:%#04x\n",regs->rax);
+	printk("do exit\n");
+    return -1;
+}
+
+system_call_t system_call_table[MAX_SYSTEM_CALL_NR] = {
+    [0] = (system_call_t)no_system_call,
+	[1] = (system_call_t)sys_printf,
+	[2 ... MAX_SYSTEM_CALL_NR-1] = (system_call_t)no_system_call,
+	
+};
+
+/**
+ * 根据系统调用号返回一个系统调用处理函数
+ */
+unsigned long system_call_function(struct pt_regs * regs) {
+    return system_call_table[regs->rax](regs);
+}
 
 /** 实例化第一个进程 */
 
@@ -90,6 +114,14 @@ void __switch_to(struct task_struct *prev,struct task_struct *next) {
 }
 
 void user_level_function(){
+
+	long ret = 0;
+	char output_string[] = "Hello World!";
+	__asm__    __volatile__    (    "leaq    sysexit_return_address(%%rip), %%rdx                           \n\t"
+                                    "movq    %%rsp,    %%rcx            \n\t"
+                                    "sysenter                           \n\t"
+                                    "sysexit_return_address:            \n\t"
+                                    :"=a"(ret):"0"(1),"D"(output_string):"memory");
     while(1);
 }
 
@@ -231,6 +263,8 @@ void task_init() {
 
 
 	wrmsr(0x174,KERNEL_CS);
+	wrmsr(0x175,current->thread->rsp0);
+	wrmsr(0x176,(unsigned long)system_call);
 
 //	init_thread,init_tss
 	set_tss64(init_thread.rsp0, init_tss[0].rsp1, init_tss[0].rsp2, init_tss[0].ist1, init_tss[0].ist2, init_tss[0].ist3, init_tss[0].ist4, init_tss[0].ist5, init_tss[0].ist6, init_tss[0].ist7);
@@ -264,3 +298,4 @@ unsigned long do_exit(unsigned long code) {
     printk("exit task is running,arg:%#018lx\n",code);
     while(1);
 }
+

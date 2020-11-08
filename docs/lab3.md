@@ -597,4 +597,179 @@ Next at t=81334051
 
 ## 系统调用API
 
-概括的来讲，我们在上一节中完成了：从内核态通过`SYSEXIT`指令跳出到用户态的目标；
+概括的来讲，我们在上一节中完成了：从内核态通过`SYSEXIT`指令跳出到用户态的目标；我们学到了：`SYSEXIT`提供了一种从内核态离开，到达用户态的方法。如果我们只是用这种方法的话，就只能完成内核态调用用户态的方法，而不能让运行在用户态的应用进程完成一些只有在内核态才能够进行的操作（比如查看一下cpu的型号）。实质上我们需要借用`SYSENTER`的方法来完成这一目标，对于该指令，作者是这样描述的：
+
+> `SYSENTER`指令是一个快速进入0特权级的指令。在执行`SYSENTER`指令之前，处理器必须为其提供0特权级的衔接程序以及0特权级的栈空间，这些数据将保存在MSR寄存器和通用寄存器中。
+>
+> - **IA32_SYSENTER_CS**（MSR寄存器组地址174h处）。这个MSR寄存器的低16位装载的是0特权级的代码段选择子，该值也用于索引0特权级的栈段选择子（IA32_SYSENTER_CS [15:0]+8），因此其值不能为NULL。
+> - **IA32_SYSENTER_ESP**（MSR寄存器组地址175h处）。这个MSR寄存器里的值将会被载入到RSP寄存器中，该值必须是Canonical型地址。在保护模式下，只有寄存器的低32位被载入到RSP寄存器中。
+> - **IA32_SYSENTER_EIP**（MSR寄存器组地址176h处）。这个MSR寄存器里的值将会被载入到RIP寄存器中，该值必须是Canonical型地址。在保护模式下，只有寄存器的低32位被载入到RIP寄存器中。
+>
+> 在执行`SYSENTER`指令的过程中，处理器会根据IA32_SYSENTER_CS寄存器的值加载相应的段选择子到CS和SS寄存器。`SYSENTER`指令与`SYSEXIT`指令都必须由操作系统负责确保段描述符的正确性。
+
+
+
+### 系统调用入口函数：
+
+```gas
+ENTRY(system_call)
+	sti
+	subq	$0x38,	%rsp			 
+	cld;					 
+
+	pushq	%rax;				 	
+	movq	%es,	%rax;			 	
+	pushq	%rax;				 	
+	movq	%ds,	%rax;			 	
+	pushq	%rax;				 	
+	xorq	%rax,	%rax;			 	
+	pushq	%rbp;				 	
+	pushq	%rdi;				 	
+	pushq	%rsi;				 	
+	pushq	%rdx;				 	
+	pushq	%rcx;				 
+	pushq	%rbx;				 	
+	pushq	%r8;				 	
+	pushq	%r9;				 	
+	pushq	%r10;				 
+	pushq	%r11;				 
+	pushq	%r12;				 	
+	pushq	%r13;				 
+	pushq	%r14;				 	
+	pushq	%r15;				 	
+	movq	$0x10,	%rdx;			 	
+	movq	%rdx,	%ds;			 	
+	movq	%rdx,	%es;			 
+	movq	%rsp,	%rdi			 	
+			
+	callq	system_call_function		 	////////
+```
+
+这里和之前写的还是有几分相似的，这里依然是将函数调用的现场进行保存，并且将当前的栈指针传递给函数`system_call_function`。这里的栈指针指向`pt_regs`。接下来我们就需要一个`system_call_function`来处理系统调用请求：
+
+```C++
+/**
+ * 根据系统调用号返回一个系统调用处理函数
+ */
+unsigned long system_call_function(struct pt_regs * regs) {
+    return system_call_table[regs->rax](regs);
+}
+```
+
+这里`system_call_function`的作用就是当用户进行一次系统调用的时候，我们就从`system_call_table`中按照相应的下标返回一个相应的处理函数。
+
+```C++
+#define MAX_SYSTEM_CALL_NR 128
+
+typedef unsigned long (* system_call_t)(struct pt_regs * regs);
+
+unsigned long no_system_call(struct pt_regs * regs) {
+    printk("no_system_call is calling,NR:%#04x\n",regs->rax);
+    return -1;
+}
+
+system_call_t system_call_table[MAX_SYSTEM_CALL_NR] = {
+    [0 ... MAX_SYSTEM_CALL_NR-1] = no_system_call
+};
+
+```
+
+### 写MSR寄存器
+
+```C++
+wrmsr(0x174,KERNEL_CS);
+wrmsr(0x175,current->thread->rsp0);
+wrmsr(0x176,(unsigned long)system_call);
+```
+
+这里就是根据前面作者的提示来初始化一下这些寄存器。
+
+
+
+### 调用系统调用函数
+
+```C++
+void user_level_function(){
+
+	long ret = 0;
+	__asm__    __volatile__    (    "leaq    sysexit_return_address(%%rip), %%rdx                           \n\t"
+                                    "movq    %%rsp,    %%rcx            \n\t"
+                                    "sysenter                           \n\t"
+                                    "sysexit_return_address:            \n\t"
+                                    :"=a"(ret):"0"(15):"memory");
+    while(1);
+}
+```
+
+
+
+### 执行
+
+我们重新执行，结果如下：
+
+<img src="pics/lab3/image-20201108233839999.png" alt="image-20201108233839999" style="zoom:50%;" />
+
+
+
+## 实现输出的系统调用
+
+在上面的一节中，我们了解了系统调用的整个框架，在此基础上，我们就可以添加各种各样的系统调用了。现在我们没法在用户态进行输出，这样的设计非常的反人类，所以我们先写一个用于输出的系统调用。
+
+
+
+### 声明系统调用函数&注册系统调用函数
+
+我们将一号系统调用设计为进行输出的系统调用，首先我们需要写一个函数：
+
+```C++
+unsigned long sys_printf(struct pt_regs * regs) {
+    printk((char *)regs->rdi);
+    return 1;
+}
+```
+
+这个函数用于输出用户给出的字符串，接着我们需要将她进行注册：
+
+```C++
+system_call_t system_call_table[MAX_SYSTEM_CALL_NR] = {
+    [0] = (system_call_t)no_system_call,
+	[1] = (system_call_t)sys_printf,
+	[2 ... MAX_SYSTEM_CALL_NR-1] = (system_call_t)no_system_call,
+};
+```
+
+这个注册，实质上就是将这个函数保存在这个列表的对应位置。
+
+
+
+### 调用&验证
+
+我们更改自己的应用程序即可：
+
+```C++
+void user_level_function(){
+
+	long ret = 0;
+	char output_string[] = "Hello World!";
+	__asm__    __volatile__    (    "leaq    sysexit_return_address(%%rip), %%rdx                           \n\t"
+                                    "movq    %%rsp,    %%rcx            \n\t"
+                                    "sysenter                           \n\t"
+                                    "sysexit_return_address:            \n\t"
+                                    :"=a"(ret):"0"(1),"D"(output_string):"memory");
+    while(1);
+}
+```
+
+我们继续执行验证：
+
+<img src="pics/lab3/image-20201109000718194.png" alt="image-20201109000718194" style="zoom:67%;" />
+
+好了！我们的系统调用编写成功了！
+
+
+
+说一下后面的安排吧，其实到现在为止，我们的操作系统已经打好了一个雏形了，这已经是一个五脏俱全的小操作系统了，虽然按照我们的看法他算不上一个操作系统。。在后面的学习中，我们会进一步丰富这个操作系统。但是在此之前，我准备：
+
+- 重构代码：说实话，前面的代码非常狗屎，需要重构一下，来调整一下码风和结构，我们会一起学习、应用谷歌C++代码规范（皮毛）
+- 温习框架：将前面涉及到的主要流程以及主要框架进行梳理，在确保自己将前面的知识掌握的牢固后，在开始下一步的学习
+

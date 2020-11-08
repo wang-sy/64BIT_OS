@@ -15,6 +15,7 @@
         "utility": "cpp",
         "cstring": "c",
         "complex": "c",
-        "system_error": "c"
+        "system_error": "c",
+        "string": "c"
     }
 }
