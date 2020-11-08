@@ -71,7 +71,7 @@ void Start_Kernel() {
     doEnter(&globalPosition);
     */
     // TSS段描述符的段选择子加载到TR寄存器
-    load_TR(8);
+    load_TR(10);
 
     // 初始化
 	set_tss64(

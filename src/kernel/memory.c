@@ -236,8 +236,8 @@ void init_memory(){
 	printk("*Global_CR3\t:%#018lx\n",*Phy_To_Virt(Global_CR3) & (~0xff));
 	printk("**Global_CR3\t:%#018lx\n",*Phy_To_Virt(*Phy_To_Virt (Global_CR3) & (~0xff)) & (~0xff));
 
-	for(int i = 0;i < 10;i++)
-		*(Phy_To_Virt(Global_CR3) + i) = 0UL;
+	// for(int i = 0;i < 10;i++)
+	// 	*(Phy_To_Virt(Global_CR3) + i) = 0UL;
 
 	flush_tlb();
 }

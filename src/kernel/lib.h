@@ -151,6 +151,8 @@ void io_out8(unsigned short port,unsigned char value);
 
 void io_out32(unsigned short port,unsigned int value);
 
+void wrmsr(unsigned long address,unsigned long value);
+
 /*
 
 */

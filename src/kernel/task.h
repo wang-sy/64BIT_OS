@@ -221,6 +221,7 @@ extern struct thread_struct init_thread;
 
 
 // define in entry.S
+void ret_system_call();
 void ret_from_intr();
 
 void task_init();
