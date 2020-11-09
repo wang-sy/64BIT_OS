@@ -11,17 +11,17 @@ endef
 
 all: system
 # 生成kernel.bin
-	objcopy -I elf64-x86-64 -S -R ".eh_frame" -R ".comment" -O binary ./build/system ./build/kernel.bin
+	@objcopy -I elf64-x86-64 -S -R ".eh_frame" -R ".comment" -O binary ./build/system ./build/kernel.bin
 
 system: Kernel.lds build_all_c_code build_all_asm_code
 # 
-	ld -b elf64-x86-64 $(ASM_FILE_BUILD_GOALS) $(C_FILE_BUILD_GOALS) -T Kernel.lds -o ./build/system
+	@ld -b elf64-x86-64 $(ASM_FILE_BUILD_GOALS) $(C_FILE_BUILD_GOALS) -T Kernel.lds -o ./build/system
 
 build_all_c_code:
-	$(foreach file, $(C_FILE_LIST), gcc-8 -mcmodel=large -fno-builtin -fno-stack-protector -m64 -c $(file).c -o ./build/$(file).o  ${\n})
+	@$(foreach file, $(C_FILE_LIST), @gcc-8 -mcmodel=large -fno-builtin -fno-stack-protector -m64 -c $(file).c -o ./build/$(file).o  ${\n})
 
 build_all_asm_code:
-	$(foreach file, $(ASM_FILE_LIST), gcc-8 -E $(file).S > ./build/$(file).s  ${\n} as --64 -o ./build/$(file).o ./build/$(file).s ${\n})
+	@$(foreach file, $(ASM_FILE_LIST), @gcc-8 -E $(file).S > ./build/$(file).s  ${\n} as --64 -o ./build/$(file).o ./build/$(file).s ${\n})
 
 clean: 
-	rm -rf ./build/*
+	@rm -rf ./build/*
