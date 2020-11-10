@@ -53,13 +53,13 @@
 这里我们还是以解读为主了：
 
 ```gas
-#//=======    GDT_Table
+#//=======    gdt_table
 
 .section .data // 数据段
 
-.globl GDT_Table // 声明全局符号，可以被其他程序调用
+.globl gdt_table // 声明全局符号，可以被其他程序调用
 
-GDT_Table:
+gdt_table:
     // 一次写8个Byte
     .quad    0x0000000000000000    /*0 NULL descriptor 00*/
     .quad    0x0020980000000000    /*1 KERNEL Code 64-bit Segment 08*/
@@ -73,20 +73,20 @@ GDT_Table:
 GDT_END:
 
 GDT_POINTER:
-GDT_LIMIT:    .word    GDT_END - GDT_Table - 1
-GDT_BASE:     .quad    GDT_Table
+GDT_LIMIT:    .word    GDT_END - gdt_table - 1
+GDT_BASE:     .quad    gdt_table
 
-//=======     IDT_Table
+//=======     idt_table
 
-.globl IDT_Table
+.globl idt_table
 
-IDT_Table:
+idt_table:
     .fill 512,8,0
 IDT_END:
 
 IDT_POINTER:
-IDT_LIMIT:    .word    IDT_END - IDT_Table - 1
-IDT_BASE:     .quad    IDT_Table
+IDT_LIMIT:    .word    IDT_END - idt_table - 1
+IDT_BASE:     .quad    idt_table
 
 //=======     TSS64_Table
 
@@ -111,10 +111,10 @@ TSS64_BASE:     .quad    TSS64_Table
 我们来熟悉一下里面的一些语句：
 
 - `.section .data`：这个语句的前半部分`.section`表示把代码分成若干段，程序被加载时会加载到不同的地址，`.data`代表这部分代码书写的是程序的数据段，数据段是可读可写的。
-- `.globl GDT_Table`：首先这个语句的`.globl`是一个声明，这个声明是告诉汇编器，后面的符号需要被连接器用到，所以要在目标文件的符号表中标记它是一个全局符号，这里是告诉连接器GDT_Table是一个全局符号，GDT_Table是一个标签，他的内容在下面进行了定义
+- `.globl gdt_table`：首先这个语句的`.globl`是一个声明，这个声明是告诉汇编器，后面的符号需要被连接器用到，所以要在目标文件的符号表中标记它是一个全局符号，这里是告诉连接器gdt_table是一个全局符号，gdt_table是一个标签，他的内容在下面进行了定义
 - `.quad    0x0000000000000000`：`.quad`指令类似于上一章中的`db`指令，都是用于填充二进制的，但是`.quad`指令是用于填充一个`8 Byte`的二进制数字的，如果你仔细一数，就发现上面的十六进制数字由16个0构成，占空间`8 Byte`。
 - `.fill   10,8,0`：这个`.fill`的标准用法如下`fill repeat, size, value`，这里就表示重复十次，每次写8个字节，填充的内容是0。
-- `GDT_LIMIT:    .word    GDT_END - GDT_Table - 1`：这里的`.word`实际上和`.quad `是相似的，只不过它是存储了`4Byte`的数据。
+- `GDT_LIMIT:    .word    GDT_END - gdt_table - 1`：这里的`.word`实际上和`.quad `是相似的，只不过它是存储了`4Byte`的数据。
 
 这里出现的所有汇编语句我们都解释一遍了，大体上来说这里是一个数据段，定义了两个表个一个段，同时使用`.globl`使定义的数据段成为全局符号，可以被其他程序调用。
 
@@ -871,38 +871,38 @@ unsigned char font_ascii[256][16]=
 #define __POSITION_H__
 
 
-struct position
+struct Position
 {
-    int XResolution; // 屏幕行数
-    int YResolution; // 屏幕列数
+    int x_resolution; // 屏幕行数
+    int y_resolution; // 屏幕列数
 
-    int XPosition; // 当前光标左上角所在位置
-    int YPosition; // 当前光标右上角所在位置
+    int x_position; // 当前光标左上角所在位置
+    int y_position; // 当前光标右上角所在位置
 
-    int XCharSize; // 每个字符所占位置的行数
-    int YCharSize; // 每个字符所占位置的列数
+    int x_char_size; // 每个字符所占位置的行数
+    int y_char_size; // 每个字符所占位置的列数
 
-    unsigned int * FB_addr; // 显示缓冲区的首地址
-    unsigned long FB_length; // 显示缓冲区的长度
+    unsigned int * screen_buffer_base_address; // 显示缓冲区的首地址
+    unsigned long screen_buffer_length; // 显示缓冲区的长度
 }Pos;
 
 // 函数，给出一个描述屏幕的结构体，将光标后移一位
-void doNext(struct position * curPos);
+void DoNext(struct Position * cur_position);
 
 // 函数，给出一个描述屏幕的结构体，在当前位置模拟换行操作
-void doEnter(struct position * curPos);
+void DoEnter(struct Position * cur_position);
 
 // 函数，给出一个描述屏幕的结构体，在当前位置模拟Backspace退格操作
-void doBackspace(struct position * curPos);
+void DoBackspace(struct Position * cur_position);
 
 // 函数，给出一个描述屏幕的结构体，在当前位置模拟Tab制表符操作（制表符大小为8个空格）
-void doTab(struct position * curPos);
+void DoTab(struct Position * cur_position);
 
 // 函数，给出一个描述屏幕的结构体，清空屏幕上所有的东西，并且将光标置为(0, 0)
-void doClear(struct position * curPos);
+void DoClear(struct Position * cur_position);
 
 // 函数，给出一个描述屏幕的结构体，以及想要在当前位置输出的文字的背景颜色、文字颜色、文字格式在当前位置进行输出
-void doPrint(struct position * curPos,const int backColor, const int fontColor, const char* charFormat);
+void DoPrint(struct Position * cur_position,const int back_ground_color, const int font_color, const char* char_format);
 
 
 #endif
@@ -922,51 +922,51 @@ char* defaultFill = "                                                           
 
 /**
  * 给出当前的位置结构体，将光标移动到下一区域
- * @param curPos 一个指针，指向被操作的位置结构体
+ * @param cur_position 一个指针，指向被操作的位置结构体
  */ 
-void doNext(struct position* curPos){
-    curPos->YPosition = curPos->YPosition + curPos->YCharSize;
-    if(curPos->YPosition >= curPos->YResolution) doEnter(curPos); // 试探，如果错误，就直接重置
+void DoNext(struct Position* cur_position){
+    cur_position->y_position = cur_position->y_position + cur_position->y_char_size;
+    if (cur_position->y_position >= cur_position->y_resolution) DoEnter(cur_position); // 试探，如果错误，就直接重置
 }
 
 /**
  * 给出当前的位置结构体，模拟回车时的操作
- * @param curPos 一个指针，指向被操作的位置结构体
+ * @param cur_position 一个指针，指向被操作的位置结构体
  */ 
-void doEnter(struct position * curPos){
-    curPos->YPosition = 0;
-    curPos->XPosition = curPos->XPosition + curPos->XCharSize; // 平移
-    if(curPos->XPosition >= curPos->XResolution) doClear(curPos); // 试探，如果错误，就直接重置
+void DoEnter(struct Position * cur_position){
+    cur_position->y_position = 0;
+    cur_position->x_position = cur_position->x_position + cur_position->x_char_size; // 平移
+    if (cur_position->x_position >= cur_position->x_resolution) DoClear(cur_position); // 试探，如果错误，就直接重置
 }
 
 /**
  * 给出当前的位置结构体，将光标置为(0, 0)[暂时不实现清空屏幕的功能]
- * @param curPos 一个指针，指向被操作的位置结构体
+ * @param cur_position 一个指针，指向被操作的位置结构体
  */ 
-void doClear(struct position * curPos){
-    curPos->XPosition = 0;
-    curPos->YPosition = 0;
+void DoClear(struct Position * cur_position){
+    cur_position->x_position = 0;
+    cur_position->y_position = 0;
 }
 
 /**
  * 给出当前的位置结构体，以及想要在当前位置输出的文字的背景颜色、文字颜色、文字格式在当前位置进行输出
- * @param curPos 一个指针，指向被操作的位置结构体
- * @param backColor 背景颜色
- * @param fontColor 字体颜色
- * @param charFormat  字体样式会根据字体样式进行颜色填充
+ * @param cur_position 一个指针，指向被操作的位置结构体
+ * @param back_ground_color 背景颜色
+ * @param font_color 字体颜色
+ * @param char_format  字体样式会根据字体样式进行颜色填充
  */ 
-void doPrint(struct position * curPos,const int backColor, const int fontColor, const char* charFormat){
+void DoPrint(struct Position * cur_position,const int back_ground_color, const int font_color, const char* char_format){
     int row, col;
 
     // 遍历每一个像素块，进行输出
-   for(row = curPos->XPosition; row < curPos->XPosition + curPos->XCharSize; row ++){
-        for(col = curPos->YPosition; col < curPos->YPosition + curPos->YCharSize; col ++){
-            int* pltAddr = curPos->FB_addr + curPos->YResolution * row + col; // 当前方块需要覆盖像素块的缓冲区地址
-            int groupId =  row - curPos->XPosition; //  算出来在第几个char中
-            int memberNum = col - curPos->YPosition; // 算出来在该char中是第几位
-            char isFont = charFormat[groupId] & (1 << (curPos->YCharSize - memberNum)); // 判断该位是否为1
+   for(row = cur_position->x_position; row < cur_position->x_position + cur_position->x_char_size; row ++){
+        for(col = cur_position->y_position; col < cur_position->y_position + cur_position->y_char_size; col ++){
+            int* pltAddr = cur_position->screen_buffer_base_address + cur_position->y_resolution * row + col; // 当前方块需要覆盖像素块的缓冲区地址
+            int groupId =  row - cur_position->x_position; //  算出来在第几个char中
+            int memberNum = col - cur_position->y_position; // 算出来在该char中是第几位
+            char isFont = char_format[groupId] & (1 << (cur_position->y_char_size - memberNum)); // 判断该位是否为1
 
-            (*pltAddr) = isFont ? fontColor : backColor; 
+            (*pltAddr) = isFont ? font_color : back_ground_color; 
         }
     }
     
@@ -975,26 +975,26 @@ void doPrint(struct position * curPos,const int backColor, const int fontColor, 
 
 /**
  * 给出当前的位置结构体，在当前位置模拟退格键[退格键不会将回车删除（也就是说，无论怎么退格，Y值都不会变）]
- * @param curPos 一个指针，指向被操作的位置结构体
+ * @param cur_position 一个指针，指向被操作的位置结构体
  */ 
-void doBackspace(struct position* curPos){
+void DoBackspace(struct Position* cur_position){
     // 先在当前位置画一个空格（把之前的字符覆盖掉） 画的时候背景是黑色
-    doPrint(curPos, 0x00000000, 0x00000000, defaultFill);
+    DoPrint(cur_position, 0x00000000, 0x00000000, defaultFill);
 
     // 如果不是行的第一个，那么就减一个空位
-    curPos->YPosition = (curPos->YPosition - curPos->YCharSize <= 0) ? 0 : 
-                        curPos->YPosition - curPos->YCharSize; 
+    cur_position->y_position = (cur_position->y_position - cur_position->y_char_size <= 0) ? 0 : 
+                        cur_position->y_position - cur_position->y_char_size; 
 }
 
 /**
  * 给出当前的位置结构体，在当前位置模拟输入一次制表符
  * 这里无论如何都要做一次，然后直到对齐4位为止
- * @param curPos 一个指针，指向被操作的位置结构体
+ * @param cur_position 一个指针，指向被操作的位置结构体
  */ 
-void doTab(struct position * curPos){
+void DoTab(struct Position * cur_position){
     do{
-        doNext(curPos);
-    } while(((curPos->YPosition / curPos->YCharSize) & 4) == 0);
+        DoNext(cur_position);
+    } while(((cur_position->y_position / cur_position->y_char_size) & 4) == 0);
 }
 ```
 
@@ -1002,25 +1002,25 @@ void doTab(struct position * curPos){
 
 这里按照惯例，来讲解一下代码，我终于摆脱了copy作者代码的阴影，开始自己创作了，下面我们来简单的讲一下这些函数：
 
-- `doNext`：将位置向后移动一个方格，如果当前位置已经是行末，那么就调用`doEnter()`
+- `DoNext`：将位置向后移动一个方格，如果当前位置已经是行末，那么就调用`DoEnter()`
 
-- `doEnter`：将位置移动到下一行的行初，如果移动后超出了屏幕，就调用`doClear`
+- `DoEnter`：将位置移动到下一行的行初，如果移动后超出了屏幕，就调用`DoClear`
 
-- `doClear`：将位置移动到左上角（暂时没有让他带有清空屏幕的功能）
+- `DoClear`：将位置移动到左上角（暂时没有让他带有清空屏幕的功能）
 
-- `doPrint`：输出一个字符，在执行这个函数的过程中，有几个需要讲解的点：
+- `DoPrint`：输出一个字符，在执行这个函数的过程中，有几个需要讲解的点：
 
-  - `int* pltAddr = curPos->FB_addr + curPos->YResolution * row + col;`：计算我们要覆盖的屏幕显示缓冲区内存地址。
+  - `int* pltAddr = cur_position->screen_buffer_base_address + cur_position->y_resolution * row + col;`：计算我们要覆盖的屏幕显示缓冲区内存地址。
 
-  - `charFormat[groupId] & (1 << (curPos->YCharSize - memberNum))`：作者给出的字符表是反着的，他实际的作用如下：
+  - `char_format[groupId] & (1 << (cur_position->y_char_size - memberNum))`：作者给出的字符表是反着的，他实际的作用如下：
 
     ![](./pics/lab2/figure3.png) 
 
     实际上就是对比当前位是否为0。
 
-- `doBackspace`将当前的位置用黑色覆盖，然后将位置向前移动一个即可。
+- `DoBackspace`将当前的位置用黑色覆盖，然后将位置向前移动一个即可。
 
-- `doTab`：无论何时使用`TAB`的时候，都会向后至少移动一格，基于这个理论，我们使用一个`do-while()`就可以非常容易解决了。后面写的判断，就是一个简易的膜4，对于CPU来说，按位与运算只需要一个时钟周期即可完成，而取余数运算是基于除法运算的，对于64位的cpu而言，最简单的除法操作需要64个时钟周期，就算用华莱士数+both来做优化，也需要让流水线停止等待很久，所以说，对于`2^n`形式的数字进行取余数，可以使用按位与的方式来判断其是否为0，这样可以极大地加快其运算速度。
+- `DoTab`：无论何时使用`TAB`的时候，都会向后至少移动一格，基于这个理论，我们使用一个`do-while()`就可以非常容易解决了。后面写的判断，就是一个简易的膜4，对于CPU来说，按位与运算只需要一个时钟周期即可完成，而取余数运算是基于除法运算的，对于64位的cpu而言，最简单的除法操作需要64个时钟周期，就算用华莱士数+both来做优化，也需要让流水线停止等待很久，所以说，对于`2^n`形式的数字进行取余数，可以使用按位与的方式来判断其是否为0，这样可以极大地加快其运算速度。
 
 
 
@@ -1032,23 +1032,23 @@ void doTab(struct position * curPos){
 
 ```C
 // 初始化屏幕
-struct position* myPos = &(struct position){
+struct Position* myPos = &(struct Position){
     SCREEN_ROW_LEN, SCREEN_COL_LEN,  // 屏幕行列
     0, 0, // 当前光标位置
     CHAR_ROW_LEN, CHAR_COL_LEN, // 字符行列
     COLOR_OUTPUT_ADDR, sizeof(int) * SCREEN_COL_LEN * SCREEN_ROW_LEN
 };
 
-doClear(myPos);
+DoClear(myPos);
 
 int curChar; 
 for(curChar = 40; curChar < 130; curChar ++){ // 输出给出的表格中的每一个字符
-    doPrint(myPos, 0xffffff00, 0x00000000, font_ascii[curChar]);
-    doNext(myPos);
-    if(curChar % 10 == 0) {
-        if(curChar % 20 == 0) doBackspace(myPos);
-        doEnter(myPos);
-        if(curChar % 30 == 0) doTab(myPos);
+    DoPrint(myPos, 0xffffff00, 0x00000000, font_ascii[curChar]);
+    DoNext(myPos);
+    if (curChar % 10 == 0) {
+        if (curChar % 20 == 0) DoBackspace(myPos);
+        DoEnter(myPos);
+        if (curChar % 30 == 0) DoTab(myPos);
     }
 }
 ```
@@ -1191,7 +1191,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 	for(str = buf; *fmt; fmt++)
 	{
 
-		if(*fmt != '%')
+		if (*fmt != '%')
 		{
 			*str++ = *fmt;
 			continue;
@@ -1216,13 +1216,13 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 			/* get field width */
 
 			field_width = -1;
-			if(is_digit(*fmt))
+			if (is_digit(*fmt))
 				field_width = skip_atoi(&fmt);
-			else if(*fmt == '*')
+			else if (*fmt == '*')
 			{
 				fmt++;
 				field_width = va_arg(args, int);
-				if(field_width < 0)
+				if (field_width < 0)
 				{
 					field_width = -field_width;
 					flags |= LEFT;
@@ -1232,22 +1232,22 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 			/* get the precision */
 
 			precision = -1;
-			if(*fmt == '.')
+			if (*fmt == '.')
 			{
 				fmt++;
-				if(is_digit(*fmt))
+				if (is_digit(*fmt))
 					precision = skip_atoi(&fmt);
-				else if(*fmt == '*')
+				else if (*fmt == '*')
 				{	
 					fmt++;
 					precision = va_arg(args, int);
 				}
-				if(precision < 0)
+				if (precision < 0)
 					precision = 0;
 			}
 			
 			qualifier = -1;
-			if(*fmt == 'h' || *fmt == 'l' || *fmt == 'L' || *fmt == 'Z')
+			if (*fmt == 'h' || *fmt == 'l' || *fmt == 'L' || *fmt == 'Z')
 			{	
 				qualifier = *fmt;
 				fmt++;
@@ -1257,7 +1257,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 			{
 				case 'c':
 
-					if(!(flags & LEFT))
+					if (!(flags & LEFT))
 						while(--field_width > 0)
 							*str++ = ' ';
 					*str++ = (unsigned char)va_arg(args, int);
@@ -1268,15 +1268,15 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 				case 's':
 				
 					s = va_arg(args,char *);
-					if(!s)
+					if (!s)
 						s = '\0';
 					len = strlen(s);
-					if(precision < 0)
+					if (precision < 0)
 						precision = len;
-					else if(len > precision)
+					else if (len > precision)
 						len = precision;
 					
-					if(!(flags & LEFT))
+					if (!(flags & LEFT))
 						while(len < field_width--)
 							*str++ = ' ';
 					for(i = 0;i < len ;i++)
@@ -1287,7 +1287,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 
 				case 'o':
 					
-					if(qualifier == 'l')
+					if (qualifier == 'l')
 						str = number(str,va_arg(args,unsigned long),8,field_width,precision,flags);
 					else
 						str = number(str,va_arg(args,unsigned int),8,field_width,precision,flags);
@@ -1295,7 +1295,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 
 				case 'p':
 
-					if(field_width == -1)
+					if (field_width == -1)
 					{
 						field_width = 2 * sizeof(void *);
 						flags |= ZEROPAD;
@@ -1310,7 +1310,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 
 				case 'X':
 
-					if(qualifier == 'l')
+					if (qualifier == 'l')
 						str = number(str,va_arg(args,unsigned long),16,field_width,precision,flags);
 					else
 						str = number(str,va_arg(args,unsigned int),16,field_width,precision,flags);
@@ -1322,7 +1322,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 					flags |= SIGN;
 				case 'u':
 
-					if(qualifier == 'l')
+					if (qualifier == 'l')
 						str = number(str,va_arg(args,unsigned long),10,field_width,precision,flags);
 					else
 						str = number(str,va_arg(args,unsigned int),10,field_width,precision,flags);
@@ -1330,7 +1330,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 
 				case 'n':
 					
-					if(qualifier == 'l')
+					if (qualifier == 'l')
 					{
 						long *ip = va_arg(args,long *);
 						*ip = (str - buf);
@@ -1350,7 +1350,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 				default:
 
 					*str++ = '%';	
-					if(*fmt)
+					if (*fmt)
 						*str++ = *fmt;
 					else
 						fmt--;
@@ -1385,11 +1385,11 @@ int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...)
 
 	for(count = 0;count < i;count++)
 	{
-		if(buf[count] == '\n') doEnter(&globalPosition);
-		else if(buf[count] == '\b') doBackspace(&globalPosition);
-		else if(buf[count] == '\t') doTab(&globalPosition);
-		else doPrint(&globalPosition, BKcolor, FRcolor, font_ascii[buf[count]]);
-        doNext(&globalPosition);
+		if (buf[count] == '\n') DoEnter(&global_position);
+		else if (buf[count] == '\b') DoBackspace(&global_position);
+		else if (buf[count] == '\t') DoTab(&global_position);
+		else DoPrint(&global_position, BKcolor, FRcolor, font_ascii[buf[count]]);
+        DoNext(&global_position);
 	}
 	return i;
 }
@@ -1401,9 +1401,9 @@ int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...)
 我们调用这个`color_printk`：
 
 ```C
-doEnter(&globalPosition);
+DoEnter(&global_position);
 color_printk(YELLOW,BLACK,"Hello World!");
-doEnter(&globalPosition);
+DoEnter(&global_position);
 ```
 
 效果如下：
@@ -1710,7 +1710,7 @@ setup_IDT:
 	shlq	$48,	%rcx
 	addq	%rcx,	%rax
 	shrq	$32,	%rdx
-	leaq	IDT_Table(%rip),	%rdi
+	leaq	idt_table(%rip),	%rdi
 	mov	$256,	%rcx
 rp_sidt:
 	movq	%rax,	(%rdi)
@@ -1723,7 +1723,7 @@ rp_sidt:
 我认为，我们不需要再去单句单句的去理解这段汇编干了什么了，因为说实话。。不是很有意义，我们的重点应该放在这段代码达到了什么目的上面。简单说，这段代码改变了IDT表的值，对IDT表进行了初始化，将idt表的每一项都填上了相同的值，这个值的意思是，当前门会跳转到这个`ignore_int`函数中进行处理，那么他是怎么实现的呢？（我还是会讲，就是不要太在意单个语句的作用，当前阶段学x86投入产出有点低）：
 
 - 首先，在`setup_IDT`中，我们定义了一个标准的门（这个门会跳转到`ignore_int`函数）
-- 然后，获取了IDT表的地址`leaq	IDT_Table(%rip),	%rdi`
+- 然后，获取了IDT表的地址`leaq	idt_table(%rip),	%rdi`
 - 最后，使用循环，每次覆盖IDT表的一项，覆盖256次（这是因为IDT表格一共有256个条目【为什么有256条目？没为什么！】）
 - 每执行完一次循环，就会自减`dec	%rcx`，直到覆盖完成后结束：`jne	rp_sidt`。
 
@@ -1750,7 +1750,7 @@ setup_TSS64:
     shlq    $16,     %rcx
     addq    %rcx,    %rax
     addq    $103,    %rax
-    leaq    GDT_Table(%rip),    %rdi
+    leaq    gdt_table(%rip),    %rdi
     movq    %rax,    64(%rdi)
     shrq    $32,     %rdx
     movq    %rdx,    72(%rdi)
@@ -1911,7 +1911,7 @@ do                                                                   \
  */ 
 inline void set_intr_gate(unsigned int n,unsigned char ist,void * addr) 
 {
-	_set_gate(IDT_Table + n , 0x8E , ist , addr);	//P,DPL=0,TYPE=E
+	_set_gate(idt_table + n , 0x8E , ist , addr);	//P,DPL=0,TYPE=E
 }
 
 /**
@@ -1922,7 +1922,7 @@ inline void set_intr_gate(unsigned int n,unsigned char ist,void * addr)
  */ 
 inline void set_trap_gate(unsigned int n,unsigned char ist,void * addr)
 {
-	_set_gate(IDT_Table + n , 0x8F , ist , addr);	//P,DPL=0,TYPE=F
+	_set_gate(idt_table + n , 0x8F , ist , addr);	//P,DPL=0,TYPE=F
 }
 
 /**
@@ -1933,7 +1933,7 @@ inline void set_trap_gate(unsigned int n,unsigned char ist,void * addr)
  */ 
 inline void set_system_gate(unsigned int n,unsigned char ist,void * addr)
 {
-	_set_gate(IDT_Table + n , 0xEF , ist , addr);	//P,DPL=3,TYPE=F
+	_set_gate(idt_table + n , 0xEF , ist , addr);	//P,DPL=3,TYPE=F
 }
 
 /**
@@ -1942,9 +1942,9 @@ inline void set_system_gate(unsigned int n,unsigned char ist,void * addr)
  * @param ist 用于填充TSS
  * @param addr 跳转的目标地址，需要传递一个函数指针
  */ 
-inline void set_system_intr_gate(unsigned int n,unsigned char ist,void * addr)	//int3
+inline void set_system_intr_gate(unsigned int n,unsigned char ist,void * addr)	//Int3Entry
 {
-	_set_gate(IDT_Table + n , 0xEE , ist , addr);	//P,DPL=3,TYPE=E
+	_set_gate(idt_table + n , 0xEE , ist , addr);	//P,DPL=3,TYPE=E
 }
 
 ```
@@ -1954,29 +1954,29 @@ inline void set_system_intr_gate(unsigned int n,unsigned char ist,void * addr)	/
 在这里有一个小的细节，我们还是需要讲一下的，我们在当前这个`gate.h`文件中写了这样的代码，尽心了一些变量类型的定义与声明：
 
 ```c
-struct desc_struct 
+struct GDTDescribeStruct 
 {
-	unsigned char x[8];
+	unsigned char a_byte[8];
 };
 
-struct gate_struct
+struct IDTGateStruct
 {
-	unsigned char x[16];
+	unsigned char a_byte[16];
 };
 
-extern struct desc_struct GDT_Table[];
-extern struct gate_struct IDT_Table[];
+extern struct GDTDescribeStruct gdt_table[];
+extern struct IDTGateStruct idt_table[];
 extern unsigned int TSS64_Table[26];
 ```
 
-可以看到，这里我们使用了一个`GDT_Table`，但是我们并没有在`.c`文件中进行定义，这是因为我们之前在`head`文件中的`.global`之中进行了定义，定义时的代码段如下：
+可以看到，这里我们使用了一个`gdt_table`，但是我们并没有在`.c`文件中进行定义，这是因为我们之前在`head`文件中的`.global`之中进行了定义，定义时的代码段如下：
 
 ```assembly
 .section .data
 
-.globl GDT_Table
+.globl gdt_table
 
-GDT_Table:
+gdt_table:
 	.quad	0x0000000000000000			/*0	NULL descriptor		       	00*/
 	.quad	0x0020980000000000			/*1	KERNEL	Code	64-bit	Segment	08*/
 	.quad	0x0000920000000000			/*2	KERNEL	Data	64-bit	Segment	10*/
@@ -2002,29 +2002,29 @@ GDT_END:
 ```C
 #include "trap.h"
 
-void sys_vector_init()
+void SystemInterruptVectorInit()
 {
-    set_trap_gate(0,1,divide_error);
-    set_trap_gate(1,1,debug);
-    set_intr_gate(2,1,nmi);
-    set_system_gate(3,1,int3);
-    set_system_gate(4,1,overflow);
-    set_system_gate(5,1,bounds);
-    set_trap_gate(6,1,undefined_opcode);
-    set_trap_gate(7,1,dev_not_available);
-    set_trap_gate(8,1,double_fault);
-    set_trap_gate(9,1,coprocessor_segment_overrun);
-    set_trap_gate(10,1,invalid_TSS);
-    set_trap_gate(11,1,segment_not_present);
-    set_trap_gate(12,1,stack_segment_fault);
-    set_trap_gate(13,1,general_protection);
-    set_trap_gate(14,1,page_fault);
+    set_trap_gate(0,1,DivideErrorEntry);
+    set_trap_gate(1,1,DebugEntry);
+    set_intr_gate(2,1,NMIEntry);
+    set_system_gate(3,1,Int3Entry);
+    set_system_gate(4,1,OverflowEntry);
+    set_system_gate(5,1,BoundsEntry);
+    set_trap_gate(6,1,UndefinedOpcodeEntry);
+    set_trap_gate(7,1,DevNotAvailableEntry);
+    set_trap_gate(8,1,DoubleFaultEntry);
+    set_trap_gate(9,1,CoprocessorSegmentOverrunEntry);
+    set_trap_gate(10,1,InvalidTSSEntry);
+    set_trap_gate(11,1,SegmentNotPresentEntry);
+    set_trap_gate(12,1,StackSegmentFaultEntry);
+    set_trap_gate(13,1,GeneralProtectionEntry);
+    set_trap_gate(14,1,PageFaultEntry);
     //15 Intel reserved. Do not use.
-    set_trap_gate(16,1,x87_FPU_error);
-    set_trap_gate(17,1,alignment_check);
-    set_trap_gate(18,1,machine_check);
-    set_trap_gate(19,1,SIMD_exception);
-    set_trap_gate(20,1,virtualization_exception);
+    set_trap_gate(16,1,x87FPUErrorEntry);
+    set_trap_gate(17,1,AlignmentCheckEntry);
+    set_trap_gate(18,1,MachineCheckEntry);
+    set_trap_gate(19,1,SIMDExceptionEntry);
+    set_trap_gate(20,1,VirtualizationExceptionEntry);
 
     //set_system_gate(SYSTEM_CALL_VECTOR,7,system_call);
 }
@@ -2045,26 +2045,26 @@ void sys_vector_init()
 
 */
 
- void divide_error();
- void debug();
- void nmi();
- void int3();
- void overflow();
- void bounds();
- void undefined_opcode();
- void dev_not_available();
- void double_fault();
- void coprocessor_segment_overrun();
- void invalid_TSS();
- void segment_not_present();
- void stack_segment_fault();
- void general_protection();
- void page_fault();
- void x87_FPU_error();
- void alignment_check();
- void machine_check();
- void SIMD_exception();
- void virtualization_exception();
+ void DivideErrorEntry();
+ void DebugEntry();
+ void NMIEntry();
+ void Int3Entry();
+ void OverflowEntry();
+ void BoundsEntry();
+ void UndefinedOpcodeEntry();
+ void DevNotAvailableEntry();
+ void DoubleFaultEntry();
+ void CoprocessorSegmentOverrunEntry();
+ void InvalidTSSEntry();
+ void SegmentNotPresentEntry();
+ void StackSegmentFaultEntry();
+ void GeneralProtectionEntry();
+ void PageFaultEntry();
+ void x87FPUErrorEntry();
+ void AlignmentCheckEntry();
+ void MachineCheckEntry();
+ void SIMDExceptionEntry();
+ void VirtualizationExceptionEntry();
 
 
 
@@ -2072,7 +2072,7 @@ void sys_vector_init()
 
 */
 
-void sys_vector_init();
+void SystemInterruptVectorInit();
 
 
 #endif
@@ -2119,10 +2119,10 @@ OLDSS  =    0xb8
 这里定义的函数会在汇编中实现，实现方法如下：
 
 ```assembly
-ENTRY(debug)
+ENTRY(DebugEntry)
 	pushq	$0
 	pushq	%rax
-	leaq	do_debug(%rip),	%rax
+	leaq	DoDebug(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 ```
@@ -2147,7 +2147,7 @@ SYMBOL_NAME_LABEL(name)
 
 
 
-在这个叫做`debug`的函数的最后，会进入到`error_code`这个代码段，改代码段如下：
+在这个叫做`DebugEntry`的函数的最后，会进入到`error_code`这个代码段，改代码段如下：
 
 ```assembly
 error_code:
@@ -2194,7 +2194,7 @@ error_code:
 ```assembly
 ret_from_exception:
 	/*GET_CURRENT(%ebx)	need rewrite*/
-ENTRY(ret_from_intr)
+ENTRY(ResetFromInterrupt)
 	jmp	RESTORE_ALL	/*need rewrite*/
 ```
 
@@ -2234,12 +2234,15 @@ RESTORE_ALL:
 所以说，在整个过程中，汇编语言执行的是：将现场压入栈中，调用C语言函数进行处理、等待函数执行完毕、恢复现场的作用。我们来看一下div的异常处理：
 
 ```C
-void do_divide_error(unsigned long rsp,unsigned long error_code)
+void DoDivideError(unsigned long rsp,unsigned long error_code)
 {
 	unsigned long * p = NULL;
 	p = (unsigned long *)(rsp + 0x98);
-	color_printk(RED,BLACK,"do_divide_error(0),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",error_code , rsp , *p);
-	while(1);
+	color_printk(RED,BLACK,"DoDivideError(0),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",error_code , rsp , *p);
+	while(1){
+	    // Endless loop
+	    continue;
+	}
 }
 ```
 
@@ -2252,14 +2255,14 @@ void do_divide_error(unsigned long rsp,unsigned long error_code)
 同理，我们再来看一个：
 
 ```assembly
-ENTRY(invalid_TSS)
+ENTRY(InvalidTSSEntry)
     pushq    %rax
-    leaq     do_invalid_TSS(%rip),    %rax
+    leaq     DoInvalidTSS(%rip),    %rax
     xchgq    %rax,    (%rsp)
     jmp      error_code
 ```
 
-这个与前面的debug有一些区别，区别在于：`invalid_TSS`是一个有返回错误码的中断，intel的cpu直接隐式的帮助我们将错误码push到栈中了，所以我们就不需要重复push了，我们之前的时候push 0 实际上就是将`error_code`置为了0.
+这个与前面的DebugEntry有一些区别，区别在于：`InvalidTSSEntry`是一个有返回错误码的中断，intel的cpu直接隐式的帮助我们将错误码push到栈中了，所以我们就不需要重复push了，我们之前的时候push 0 实际上就是将`error_code`置为了0.
 
 
 
@@ -2267,7 +2270,7 @@ ENTRY(invalid_TSS)
 
 ```assembly
 
-ENTRY(nmi)
+ENTRY(NMIEntry)
 	pushq	%rax
 	cld;			
 	pushq	%rax;	
@@ -2301,14 +2304,14 @@ ENTRY(nmi)
 	movq	$0,	%rsi
 	movq	%rsp,	%rdi
 
-	callq	do_nmi
+	callq	DoNMI
 
 	jmp	RESTORE_ALL
 ```
 
 
 
-`#NMI`不可屏蔽中断不是异常，而是一个外部中断，从而不会生成错误码。`#NMI`应该执行中断处理过程，这段程序最后会跳转到`do_nmi`函数进行处理。了解了我们处理函数的入口后，我们接下来看一下几种错误码的组成。
+`#NMI`不可屏蔽中断不是异常，而是一个外部中断，从而不会生成错误码。`#NMI`应该执行中断处理过程，这段程序最后会跳转到`DoNMI`函数进行处理。了解了我们处理函数的入口后，我们接下来看一下几种错误码的组成。
 
 在继续前进之前，我们先来梳理一下现在学习的内容，我画了一张图方便大家理解：
 
@@ -2338,11 +2341,11 @@ ENTRY(nmi)
  * @param error_code 错误码,由段选择子\ TI\ IDT\ EXT _ 保留位五个部分组成
  * 
  */ 
-void do_invalid_TSS(unsigned long rsp,unsigned long error_code)
+void DoInvalidTSS(unsigned long rsp,unsigned long error_code)
 {
 	unsigned long * p = NULL;
 	p = (unsigned long *)(rsp + 0x98);
-	printk("do_invalid_TSS(10),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",error_code , rsp , *p);
+	printk("DoInvalidTSS(10),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",error_code , rsp , *p);
 
 	switch (error_code & 6) {
         case 2: printk("Ref to IDT");break; // IDT
@@ -2353,7 +2356,10 @@ void do_invalid_TSS(unsigned long rsp,unsigned long error_code)
 
 	printk("Segment Selector Index:%#010x\n",error_code & 0xfff8);
 
-	while(1);
+	while(1){
+	    // Endless loop
+	    continue;
+	}
 }
 ```
 
@@ -2373,7 +2379,7 @@ PF错误是页错误,在进行内存引用时可能被触发：
  * @param rsp 段基址
  * @param error_code 错误码,由段选择子\ TI\ IDT\ EXT _ 保留位五个部分组成
  */
-void do_page_fault(unsigned long rsp,unsigned long error_code)
+void DoPageFault(unsigned long rsp,unsigned long error_code)
 {
 	unsigned long * p = NULL;
 	unsigned long cr2 = 0;
@@ -2381,30 +2387,33 @@ void do_page_fault(unsigned long rsp,unsigned long error_code)
 	__asm__	__volatile__("movq	%%cr2,	%0":"=r"(cr2)::"memory");
 
 	p = (unsigned long *)(rsp + 0x98);
-	printk("do_page_fault(14),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",error_code , rsp , *p);
+	printk("DoPageFault(14),ERROR_CODE:%#018lx,RSP:%#018lx,RIP:%#018lx\n",error_code , rsp , *p);
 
 	// 如果是0，就说明是缺页异常， 否则就说明是页级保护异常
-	if(!(error_code & 0x01)) printk("Page Not-Present,\t");
+	if (!(error_code & 0x01)) printk("Page Not-Present,\t");
 	else printk("Page is Protected!\t"); 
 
 	// 检查W/R位，如果为1就说明写入错误，否则读取错误
-	if(error_code & 0x02) printk("Write Cause Fault,\t");
+	if (error_code & 0x02) printk("Write Cause Fault,\t");
 	else printk("Read Cause Fault,\t");
 
 	// 检查U/S位，1代表普通用户访问时出现错误，否则超级用户访问时错误
-	if(error_code & 0x04) printk("Fault in user(3)\t");
+	if (error_code & 0x04) printk("Fault in user(3)\t");
 	else printk("Fault in supervisor(0,1,2)\t");
 
 	// RSVD位，如果为1则说明页表的保留项引发异常
-	if(error_code & 0x08) printk(",Reserved Bit Cause Fault\t");
+	if (error_code & 0x08) printk(",Reserved Bit Cause Fault\t");
 
 	// I/D位，如果为1则说明获取指令时发生异常
-	if(error_code & 0x10) printk(",Instruction fetch Cause Fault");
+	if (error_code & 0x10) printk(",Instruction fetch Cause Fault");
 
 	printk("\n");
 	printk("CR2:%#018lx\n",cr2);
 
-	while(1);
+	while(1){
+	    // Endless loop
+	    continue;
+	}
 }
 ```
 
@@ -2456,7 +2465,7 @@ clean:
 这里对main.c进行了更改，这里对异常处理函数进行了限定， 对TSS进行了读取与初始化，相应的，我们需要将head.S中读取TSS的代码删除，以避免重复读取，产生错误：
 
 ```C
-doEnter(&globalPosition);
+DoEnter(&global_position);
 
     // TSS段描述符的段选择子加载到TR寄存器
     load_TR(8);
@@ -2470,7 +2479,7 @@ doEnter(&globalPosition);
         0xffff800000007c00, 0xffff800000007c00
     );
 
-	sys_vector_init(); // 初始化IDT表，确定各种异常的处理函数
+	SystemInterruptVectorInit(); // 初始化IDT表，确定各种异常的处理函数
 
     int a = 1 / 0;
 
@@ -2644,13 +2653,13 @@ void init_memory(){
 
         // 统计可用内存
 		unsigned long tmp = 0;
-		if(p->type == 1){ // 如果内存可用
+		if (p->type == 1){ // 如果内存可用
 			tmp = p->lengthHigh;
 			TotalMem +=  p->lengthLow;
 			TotalMem +=  tmp  << 32;
 		}
 
-		if(p->type > 4)
+		if (p->type > 4)
 			break;		
 	}
 
@@ -2663,7 +2672,7 @@ void init_memory(){
 这个函数并没有进行存储，而直接将信息进行了输出，我们在`main`中添加相应的输出，进行查看（需要注意的是，你需要把除0错误去掉，要不然会宕机），更改后的程序片段如下：
 
 ```C
-sys_vector_init(); // 初始化IDT表，确定各种异常的处理函数
+SystemInterruptVectorInit(); // 初始化IDT表，确定各种异常的处理函数
 
 init_memory(); // 输出所有内存信息
 
@@ -2732,13 +2741,13 @@ for(int i = 0;i < 32;i++, p++){
 
     // 统计可用内存
     unsigned long tmp = 0;
-    if(p->type == 1) TotalMem += p->length;
+    if (p->type == 1) TotalMem += p->length;
 
     // 存储内存块信息， 更新长度
     memory_management_struct.e820[i] = (struct Memory_Block_E820){p->baseAddr, p->length, p->type};
     memory_management_struct.e820_length = i;
 
-    if(p->type > 4) break;		
+    if (p->type > 4) break;		
 }
 ```
 
@@ -2793,7 +2802,7 @@ TotalMem = 0;
 
 for(int i = 0; i <= memory_management_struct.e820_length; i ++){
 
-    if(memory_management_struct.e820[i].type != 1) continue;
+    if (memory_management_struct.e820[i].type != 1) continue;
 
     unsigned long start, end;
     start = PAGE_2M_ALIGN(memory_management_struct.e820[i].baseAddr); // 计算开头的向后对齐地址
@@ -2802,7 +2811,7 @@ for(int i = 0; i <= memory_management_struct.e820_length; i ++){
         >> PAGE_2M_SHIFT
     ) << PAGE_2M_SHIFT; // 计算结尾的向前对齐地址
 
-    if(end <= start) continue;
+    if (end <= start) continue;
 
     TotalMem += (end - start) >> PAGE_2M_SHIFT;
 
@@ -2952,13 +2961,13 @@ memory_management_struct.end_brk    = (unsigned long)& _end;
 // 循环遍历，输出内存信息
 for(int i = 0;i < 32;i++, p++){
 
-    if(p->type > 4 || p->length == 0 || p->type < 1) break;		
+    if (p->type > 4 || p->length == 0 || p->type < 1) break;		
     // 输出内存信息
     printk("Address:%#018lx\tLength:%#018lx\tType:%#010x\n", p->baseAddr,p->length,p->type);
 
     // 统计可用内存
     unsigned long tmp = 0;
-    if(p->type == 1) TotalMem += p->length;
+    if (p->type == 1) TotalMem += p->length;
 
     // 存储内存块信息， 更新长度
     memory_management_struct.e820[i] = (struct Memory_Block_E820){p->baseAddr, p->length, p->type};
@@ -3047,7 +3056,7 @@ printk("zones_struct : %d, zones_size: %d, zones_length: %d\n",
 for(int curBlock = 0; curBlock <= memory_management_struct.e820_length; curBlock ++ ){
 
     // 如果内存块不可用，那么跳过
-    if(memory_management_struct.e820[curBlock].type != 1) continue;
+    if (memory_management_struct.e820[curBlock].type != 1) continue;
 
     /*===================计算开始、结尾地址===================*/
 
@@ -3060,7 +3069,7 @@ for(int curBlock = 0; curBlock <= memory_management_struct.e820_length; curBlock
     ) << PAGE_2M_SHIFT; 
 
     // 如果没有可用空间就跳过
-    if(end <= start) continue;
+    if (end <= start) continue;
 
     /*===================初始化zone===================*/
 
@@ -3175,7 +3184,7 @@ for(int i = 0;i < memory_management_struct.zones_size;i++) {
 		zone_length:%#018lx,pages_group:%#018lx,pages_length:%#018lx\n", \
            z->zone_start_address,z->zone_end_address,z->zone_length,z->pages_group,z->pages_length);
     // 如果起始地址符合条件，那么就将其设置为非映射区间
-    if(z->zone_start_address == 0x100000000)
+    if (z->zone_start_address == 0x100000000)
         ZONE_UNMAPED_INDEX = i;
 }
 	
@@ -3228,7 +3237,7 @@ for(int pageId = 0;pageId <= curPageId;pageId++)
  *  @param flag 初始化时的参数
  */
 void page_init(struct Page * page,unsigned long flag){
-	if(!page->attribute) { // 如果该页没有使用过
+	if (!page->attribute) { // 如果该页没有使用过
         *(memory_management_struct.bits_map + ((page->PHY_address >> PAGE_2M_SHIFT) >> 6)) |= 1UL << (page->PHY_address >> PAGE_2M_SHIFT) % 64;
         page->attribute = flag; // 将状态置为flag
         page->reference_count++; // 被使用了，ref ++
@@ -3238,7 +3247,7 @@ void page_init(struct Page * page,unsigned long flag){
         page->zone_struct->total_pages_link++;
     }
 	// 如果已经被引用，或是有共享属性，那么就不需要在调整可用页数，而是直接改变引用数量，并且调整页的属性即可
-	else if((page->attribute & PG_Referenced) || (page->attribute & PG_K_Share_To_U) || (flag & PG_Referenced) || (flag & PG_K_Share_To_U)) {
+	else if ((page->attribute & PG_Referenced) || (page->attribute & PG_K_Share_To_U) || (flag & PG_Referenced) || (flag & PG_K_Share_To_U)) {
 		page->attribute |= flag;
         page->reference_count++;
         page->zone_struct->total_pages_link++;
@@ -3377,7 +3386,7 @@ for(int cur_zone_id = begin_zone; cur_zone_id < end_zone; cur_zone_id ++){
     struct Zone* cur_zone = memory_management_struct.zones_struct + cur_zone_id; // 获取当前zone
 
     // 如果当前的Zone中，没有足够的页，那么就找下一个
-    if(cur_zone->page_free_count < number) continue;
+    if (cur_zone->page_free_count < number) continue;
 
     unsigned long start = (cur_zone->zone_start_address >> PAGE_2M_SHIFT); // 开始的页号
     unsigned long end = (cur_zone->zone_end_address >> PAGE_2M_SHIFT); // 结束的页号 
@@ -3390,7 +3399,7 @@ for(int cur_zone_id = begin_zone; cur_zone_id < end_zone; cur_zone_id ++){
         unsigned long shift_index = (cur_page_id % 64);// 确定当前bitsmap元素的哪一位描述当前页
 
         for(int check_page_id = shift_index; check_page_id < 64 - shift_index; check_page_id ++){
-            if( !(((*cur_bits_map >> check_page_id) |(*(cur_bits_map + 1) << (64 - check_page_id))) &
+            if ( !(((*cur_bits_map >> check_page_id) |(*(cur_bits_map + 1) << (64 - check_page_id))) &
                   (number == 64 ? 0xffffffffffffffffUL : ((1UL << number) - 1))) ){
                 // 如果当前bitsmap元素中，0 ~ number 的没有被使用，那么就将其分配
                 unsigned long  st_page;
@@ -3495,7 +3504,7 @@ printk("memory_management_struct.bits_map:%#018lx\n",*(memory_management_struct.
 - **主芯片检测到中断事件**：中断事件发生（`IR 0-- 7`寄存器捕获到了时钟上升沿）
 - **使用中断屏蔽寄存器进行筛选**：如果发生的事件是被允许的（不被屏蔽的），那么就继续，反之则结束
 - **通过优先级解析器选择处理顺序**：将所有待处理中断按照设定进行排序，先处理优先级更高的中断事件，向正在处理服务寄存器发送该事件
-- **与CPU之间第一次握手**：正在服务寄存器接到新的事件并且存储结束后，会向CPU发送INT中断（上升沿），CPU返回`INTA`信号，表示收到
+- **与CPU之间第一次握手**：正在��务寄存器接到新的事件并且存储结束后，会向CPU发送INT中断（上升沿），CPU返回`INTA`信号，表示收到
 - **与CPU之间第二次握手**：随后CPU会再次返回一个`INTA`信号，这时，正在服务寄存器存储对应事件，`8259A`芯片向数据总线中写入中断向量号，cpu读取到总线中的中断向量后，执行异常处理例程（我们已经写过了）。
 - 收尾处理：
   - **8259A 使用自动结束中断**：在第二个INTA脉冲信号的结尾处复位正在服务寄存器ISR的对应位
@@ -3733,19 +3742,19 @@ OCW由`OCW 1 -- 3`三个寄存器构成，这些都不是我们了解的重点�
 #### **生成入口函数的宏定义**
 
 ```C
-#define IRQ_NAME2(nr) nr##_interrupt(void)
+#define IRQ_NAME2(nr) nr##Interrupt(void)
 #define IRQ_NAME(nr) IRQ_NAME2(IRQ##nr)
 
-#define Build_IRQ(nr)                                               \
+#define BUILD_IRQ(nr)                                               \
 void IRQ_NAME(nr);                                                  \
-__asm__ (    SYMBOL_NAME_STR(IRQ)#nr"_interrupt:        \n\t"       \
+__asm__ (    SYMBOL_NAME_STR(IRQ)#nr"Interrupt:        \n\t"       \
              "pushq    $0x00                            \n\t"       \
              SAVE_ALL                                               \
              "movq     %rsp,     %rdi                   \n\t"       \
-             "leaq     ret_from_intr(%rip),    %rax     \n\t"       \
+             "leaq     ResetFromInterrupt(%rip),    %rax     \n\t"       \
              "pushq    %rax                    \n\t"                \
              "movq     $"#nr",   %rsi          \n\t"                \
-             "jmp      do_IRQ                  \n\t"                \
+             "jmp      DoIRQ                  \n\t"                \
         );
 ```
 
@@ -3756,41 +3765,41 @@ __asm__ (    SYMBOL_NAME_STR(IRQ)#nr"_interrupt:        \n\t"       \
 上面我们写了一个生成入口函数的宏定义，只需要给出中断向量号就可以生成相应的入口函数了，在这里使用这个宏定义来生成我们需要的入口函数：
 
 ```C
-Build_IRQ(0x20)
-Build_IRQ(0x21)
-Build_IRQ(0x22)
-Build_IRQ(0x23)
-Build_IRQ(0x24)
-Build_IRQ(0x25)
-Build_IRQ(0x26)
-Build_IRQ(0x27)
-Build_IRQ(0x28)
-Build_IRQ(0x29)
-Build_IRQ(0x2a)
-Build_IRQ(0x2b)
-Build_IRQ(0x2c)
-Build_IRQ(0x2d)
-Build_IRQ(0x2e)
-Build_IRQ(0x2f)
-Build_IRQ(0x30)
-Build_IRQ(0x31)
-Build_IRQ(0x32)
-Build_IRQ(0x33)
-Build_IRQ(0x34)
-Build_IRQ(0x35)
-Build_IRQ(0x36)
-Build_IRQ(0x37)
+BUILD_IRQ(0x20)
+BUILD_IRQ(0x21)
+BUILD_IRQ(0x22)
+BUILD_IRQ(0x23)
+BUILD_IRQ(0x24)
+BUILD_IRQ(0x25)
+BUILD_IRQ(0x26)
+BUILD_IRQ(0x27)
+BUILD_IRQ(0x28)
+BUILD_IRQ(0x29)
+BUILD_IRQ(0x2a)
+BUILD_IRQ(0x2b)
+BUILD_IRQ(0x2c)
+BUILD_IRQ(0x2d)
+BUILD_IRQ(0x2e)
+BUILD_IRQ(0x2f)
+BUILD_IRQ(0x30)
+BUILD_IRQ(0x31)
+BUILD_IRQ(0x32)
+BUILD_IRQ(0x33)
+BUILD_IRQ(0x34)
+BUILD_IRQ(0x35)
+BUILD_IRQ(0x36)
+BUILD_IRQ(0x37)
     
 // 定义并初始化中断处理函数表
 void (* interrupt[24])(void) = {
-	IRQ0x20_interrupt,IRQ0x21_interrupt,IRQ0x22_interrupt,
-    IRQ0x23_interrupt,IRQ0x24_interrupt,IRQ0x25_interrupt,
-    IRQ0x26_interrupt,IRQ0x27_interrupt,IRQ0x28_interrupt,
-    IRQ0x29_interrupt,IRQ0x2a_interrupt,IRQ0x2b_interrupt,
-    IRQ0x2c_interrupt,IRQ0x2d_interrupt,IRQ0x2e_interrupt,
-    IRQ0x2f_interrupt,IRQ0x30_interrupt,IRQ0x31_interrupt,
-    IRQ0x32_interrupt,IRQ0x33_interrupt,IRQ0x34_interrupt,
-    IRQ0x35_interrupt,IRQ0x36_interrupt,IRQ0x37_interrupt,
+	IRQ0x20Interrupt,IRQ0x21Interrupt,IRQ0x22Interrupt,
+    IRQ0x23Interrupt,IRQ0x24Interrupt,IRQ0x25Interrupt,
+    IRQ0x26Interrupt,IRQ0x27Interrupt,IRQ0x28Interrupt,
+    IRQ0x29Interrupt,IRQ0x2aInterrupt,IRQ0x2bInterrupt,
+    IRQ0x2cInterrupt,IRQ0x2dInterrupt,IRQ0x2eInterrupt,
+    IRQ0x2fInterrupt,IRQ0x30Interrupt,IRQ0x31Interrupt,
+    IRQ0x32Interrupt,IRQ0x33Interrupt,IRQ0x34Interrupt,
+    IRQ0x35Interrupt,IRQ0x36Interrupt,IRQ0x37Interrupt,
 };
 
 
@@ -3799,10 +3808,10 @@ void (* interrupt[24])(void) = {
 入口函数定义完毕后，我们将其加入到一个数组中，该数组标记着不同中断向量所对应着的处理函数。根据我们的定义：
 
 ```C
-"jmp	do_IRQ	\n\t"
+"jmp	DoIRQ	\n\t"
 ```
 
-这些函数被执行后，都将跳转到`do_IRQ`函数进行统一处理。
+这些函数被执行后，都将跳转到`DoIRQ`函数进行统一处理。
 
 在最后，我们使用一个函数，将这些信息录入到`IDT`表格中：
 
@@ -3810,7 +3819,7 @@ void (* interrupt[24])(void) = {
 /**
  * 初始化中断处理程序的地址
  */
-void init_interrupt(){
+void InitInterrupt(){
 
     // 装载 IDT Table
     for(int i = 32;i < 56;i++)
@@ -3839,17 +3848,17 @@ void init_interrupt(){
 }
 ```
 
-到此为止，我们对中断的初始化就告一段落了，接下来就写一个函数`do_IRQ`来处理中断即可：
+到此为止，我们对中断的初始化就告一段落了，接下来就写一个函数`DoIRQ`来处理中断即可：
 
 
 
-#### 中断处理函数`do_IRQ`
+#### 中断处理函数`DoIRQ`
 
 ```C
 
-// 中断处理程序do_IRQ
-void do_IRQ(unsigned long regs,unsigned long nr) { 
-	printk("do_IRQ:%#08x\t",nr); // 中断处理（直接输出）
+// 中断处理程序DoIRQ
+void DoIRQ(unsigned long regs,unsigned long nr) { 
+	printk("DoIRQ:%#08x\t",nr); // 中断处理（直接输出）
 	io_out8(0x20,0x20); // 向主芯片返回信息
 }
 ```
@@ -3860,7 +3869,7 @@ void do_IRQ(unsigned long regs,unsigned long nr) {
 
 ### 测试
 
-在makefile中添加新建的`interrupt`，并且在`main.c`中进行引入，在`main.c`中调用`init_interrupt`函数进行中断函数的初始化，执行后结果如下：
+在makefile中添加新建的`interrupt`，并且在`main.c`中进行引入，在`main.c`中调用`InitInterrupt`函数进行中断函数的初始化，执行后结果如下：
 
 <img src="pics/lab2/image-20201029204128754.png" alt="image-20201029204128754" style="zoom:50%;" />
 
@@ -3871,12 +3880,12 @@ void do_IRQ(unsigned long regs,unsigned long nr) {
 ```C
 /**
  * 给出当前的位置结构体，将光标置为(0, 0)[暂时不实现清空屏幕的功能]
- * @param curPos 一个指针，指向被操作的位置结构体
+ * @param cur_position 一个指针，指向被操作的位置结构体
  */ 
-void doClear(struct position * curPos){
-    curPos->XPosition = 0;
-    curPos->YPosition = 0;
-    memset(curPos->FB_addr, 0x00, curPos->FB_length);
+void DoClear(struct Position * cur_position){
+    cur_position->x_position = 0;
+    cur_position->y_position = 0;
+    memset(cur_position->screen_buffer_base_address, 0x00, cur_position->screen_buffer_length);
 }
 ```
 
@@ -3910,7 +3919,7 @@ void doClear(struct position * curPos){
 /**
  * 初始化中断处理程序的地址
  */
-void init_interrupt(){
+void InitInterrupt(){
 
     // 装载 IDT Table
     for(int i = 32;i < 56;i++)
@@ -3939,10 +3948,10 @@ void init_interrupt(){
 }
 
 
-// 中断处理程序do_IRQ
-void do_IRQ(unsigned long regs,unsigned long nr) { 
+// 中断处理程序DoIRQ
+void DoIRQ(unsigned long regs,unsigned long nr) { 
 	
-    printk("do_IRQ:%#08x\t",nr);
+    printk("DoIRQ:%#08x\t",nr);
     unsigned char x = io_in8(0x60);
     printk("key code:%#08x\n",x);
     io_out8(0x20,0x20);
@@ -4418,7 +4427,7 @@ void task_init() {
    * 第一个进程，清空屏幕并输出Hello World! 激动人心的时刻！
    */
   unsigned long init(unsigned long arg) {
-      doClear(&globalPosition);
+      DoClear(&global_position);
       printk("Hello World!\ninit task is running,arg:%#018lx\n",arg);
       return 1;
   }
@@ -4490,8 +4499,8 @@ void task_init() {
     	thd->rsp = (unsigned long)tsk + STACK_SIZE - sizeof(struct pt_regs);
     
         // 如果
-    	if(!(tsk->flags & PF_KTHREAD)) // 进程运行于应用层空间， 就将预执行函数设置为： ret_from_intr
-    		thd->rip = regs->rip = (unsigned long)ret_from_intr;
+    	if (!(tsk->flags & PF_KTHREAD)) // 进程运行于应用层空间， 就将预执行函数设置为： ResetFromInterrupt
+    		thd->rip = regs->rip = (unsigned long)ResetFromInterrupt;
     
     	tsk->state = TASK_RUNNING;
     
@@ -4503,7 +4512,7 @@ void task_init() {
 
     - 我们首先为新的进程设置了内存空间
     - 然后将当前进程控制结构体中的数据复制到新分配物理页中，并进一步初始化
-    - 最后根据程序是否运行在应用层空间，设置不同的执行函数(这里的`ret_from_intr`是在异常处理阶段定义的函数，用于恢复异常处理现场)
+    - 最后根据程序是否运行在应用层空间，设置不同的执行函数(这里的`ResetFromInterrupt`是在异常处理阶段定义的函数，用于恢复异常处理现场)
 
   - `kernel_thread_func`的实现
 
@@ -4546,7 +4555,10 @@ void task_init() {
       ```C
       unsigned long do_exit(unsigned long code) {
           printk("exit task is running,arg:%#018lx\n",code);
-          while(1);
+          while(1){
+	    // Endless loop
+	    continue;
+	}
           
           return 0UL;
       }
@@ -4617,7 +4629,7 @@ kernel_thread_func:
 ```C
     init_memory(); // 输出所有内存信息
 
-    init_interrupt();
+    InitInterrupt();
 
     task_init();
 ```

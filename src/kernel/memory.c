@@ -26,13 +26,13 @@ void init_memory(){
 	* ==========循环遍历，输出内存信息==========*/
 	for(int i = 0;i < 32;i++, p++){
 
-		if(p->type > 4 || p->length == 0 || p->type < 1) break;		
+		if (p->type > 4 || p->length == 0 || p->type < 1) break;		
         // 输出内存信息
 		printk("%d ::: Address:%#018lx\tLength:%#018lx\tType:%#010x\n", i, p->baseAddr,p->length,p->type);
 
         // 统计可用内存
 		unsigned long tmp = 0;
-		if(p->type == 1) TotalMem += p->length;
+		if (p->type == 1) TotalMem += p->length;
 
 		// 存储内存块信息， 更新长度
 		memory_management_struct.e820[i] = (struct Memory_Block_E820){p->baseAddr, p->length, p->type};
@@ -48,7 +48,7 @@ void init_memory(){
 	* ==========循环遍历，统计输出内存可用页的数量==========*/
 	for(int i = 0; i <= memory_management_struct.e820_length; i ++){
 		
-		if(memory_management_struct.e820[i].type != 1) continue;
+		if (memory_management_struct.e820[i].type != 1) continue;
 		
 		unsigned long start, end;
 		start = PAGE_2M_ALIGN(memory_management_struct.e820[i].baseAddr); // 计算开头的向后对齐地址
@@ -57,7 +57,7 @@ void init_memory(){
 			 >> PAGE_2M_SHIFT
 		) << PAGE_2M_SHIFT; // 计算结尾的向前对齐地址
 
-		if(end <= start) continue;
+		if (end <= start) continue;
 
         TotalMem += (end - start) >> PAGE_2M_SHIFT;
 	}
@@ -118,7 +118,7 @@ void init_memory(){
 	for(int curBlock = 0; curBlock <= memory_management_struct.e820_length; curBlock ++ ){
 
 		// 如果内存块不可用，那么跳过
-		if(memory_management_struct.e820[curBlock].type != 1) continue;
+		if (memory_management_struct.e820[curBlock].type != 1) continue;
 
 		/*===================计算开始、结尾地址===================*/
 
@@ -131,7 +131,7 @@ void init_memory(){
 		) << PAGE_2M_SHIFT; 
 
 		// 如果没有可用空间就跳过
-		if(end <= start) continue;
+		if (end <= start) continue;
 
 		/*===================初始化zone===================*/
 
@@ -208,7 +208,7 @@ void init_memory(){
 		zone_length:%#018lx,pages_group:%#018lx,pages_length:%#018lx\n", \
 		z->zone_start_address,z->zone_end_address,z->zone_length,z->pages_group,z->pages_length);
 		// 如果起始地址符合条件，那么就将其设置为非映射区间
-		if(z->zone_start_address == 0x100000000)
+		if (z->zone_start_address == 0x100000000)
 			ZONE_UNMAPED_INDEX = i;
 	}
 	
@@ -248,7 +248,7 @@ void init_memory(){
  *  @param flag 初始化时的参数
  */
 unsigned long page_init(struct Page * page,unsigned long flag){
-	if(!page->attribute) { // 如果该页没有使用过
+	if (!page->attribute) { // 如果该页没有使用过
         *(memory_management_struct.bits_map + ((page->PHY_address >> PAGE_2M_SHIFT) >> 6)) |= 1UL << (page->PHY_address >> PAGE_2M_SHIFT) % 64;
         page->attribute = flag; // 将状态置为flag
         page->reference_count++; // 被使用了，ref ++
@@ -258,7 +258,7 @@ unsigned long page_init(struct Page * page,unsigned long flag){
         page->zone_struct->total_pages_link++;
     }
 	// 如果已经被引用，或是有共享属性，那么就不需要在调整可用页数，而是直接改变引用数量，并且调整页的属性即可
-	else if((page->attribute & PG_Referenced) || (page->attribute & PG_K_Share_To_U) || (flag & PG_Referenced) || (flag & PG_K_Share_To_U)) {
+	else if ((page->attribute & PG_Referenced) || (page->attribute & PG_K_Share_To_U) || (flag & PG_Referenced) || (flag & PG_K_Share_To_U)) {
 		page->attribute |= flag;
         page->reference_count++;
         page->zone_struct->total_pages_link++;
@@ -322,7 +322,7 @@ struct Page* alloc_pages(int zone_select,int number,unsigned long page_flags){
 		struct Zone* cur_zone = memory_management_struct.zones_struct + cur_zone_id; // 获取当前zone
 
 		// 如果当前的Zone中，没有足够的页，那么就找下一个
-		if(cur_zone->page_free_count < number) continue;
+		if (cur_zone->page_free_count < number) continue;
 
 		unsigned long start = (cur_zone->zone_start_address >> PAGE_2M_SHIFT); // 开始的页号
 		unsigned long end = (cur_zone->zone_end_address >> PAGE_2M_SHIFT); // 结束的页号 
@@ -335,7 +335,7 @@ struct Page* alloc_pages(int zone_select,int number,unsigned long page_flags){
 			unsigned long shift_index = (cur_page_id % 64);// 确定当前bitsmap元素的哪一位描述当前页
 			
 			for(int check_page_id = shift_index; check_page_id < 64 - shift_index; check_page_id ++){
-				if( !(((*cur_bits_map >> check_page_id) |(*(cur_bits_map + 1) << (64 - check_page_id))) &
+				if ( !(((*cur_bits_map >> check_page_id) |(*(cur_bits_map + 1) << (64 - check_page_id))) &
 				(number == 64 ? 0xffffffffffffffffUL : ((1UL << number) - 1))) ){
 					// 如果当前bitsmap元素中，0 ~ number 的没有被使用，那么就将其分配
 					unsigned long  st_page;

@@ -298,7 +298,7 @@ ENTRY(ret_system_call)
 ### 更改head.S中的GDT
 
 ```C
-GDT_Table:
+gdt_table:
     .quad 0x0000000000000000    /*0 NULL descriptor                     00*/
     .quad 0x0020980000000000    /*1 KERNEL    Code    64-bit Segment    08*/
     .quad 0x0000920000000000    /*2 KERNEL    Data    64-bit Segment    10*/
@@ -327,7 +327,7 @@ movq	%rdx,	88(%rdi)
 
 ```C
 // TSS段描述符的段选择子加载到TR寄存器
-load_TR(10);
+LOAD_TR(10);
 ```
 
 
@@ -335,7 +335,7 @@ load_TR(10);
 ### 更改`do_fork`时调用的返回函数
 
 ```C
-if(!(tsk->flags & PF_KTHREAD)) {// 进程运行于应用层空间， 就将预执行函数设置为： ret_system_call
+if (!(tsk->flags & PF_KTHREAD)) {// 进程运行于应用层空间， 就将预执行函数设置为： ret_system_call
     thd->rip = regs->rip = (unsigned long)ret_system_call;
     printk("app run in appLabel, pre function is ret_system_call");
 }
@@ -384,7 +384,10 @@ unsigned long init(unsigned long arg) {
 }
 
 void user_level_function(){
-    while(1);
+    while(1){
+	    // Endless loop
+	    continue;
+	}
 }
 
 unsigned long do_execve(struct pt_regs * regs){
@@ -506,7 +509,10 @@ Next at t=81334049
 ```C++
 void user_level_function(){
     printk("test");
-    while(1);
+    while(1){
+	    // Endless loop
+	    continue;
+	}
 }
 ```
 
@@ -697,7 +703,10 @@ void user_level_function(){
                                     "sysenter                           \n\t"
                                     "sysexit_return_address:            \n\t"
                                     :"=a"(ret):"0"(15):"memory");
-    while(1);
+    while(1){
+	    // Endless loop
+	    continue;
+	}
 }
 ```
 
@@ -756,7 +765,10 @@ void user_level_function(){
                                     "sysenter                           \n\t"
                                     "sysexit_return_address:            \n\t"
                                     :"=a"(ret):"0"(1),"D"(output_string):"memory");
-    while(1);
+    while(1){
+	    // Endless loop
+	    continue;
+	}
 }
 ```
 

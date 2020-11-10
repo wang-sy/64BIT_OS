@@ -1,5 +1,4 @@
 #include "task.h"
-#include "position.h"
 #include "memory.h"
 #include "gate.h"
 
@@ -92,7 +91,7 @@ void __switch_to(struct task_struct *prev,struct task_struct *next) {
 
 	printk("do __switch to begin\n");
 	init_tss[0].rsp0 = next->thread->rsp0;
-	set_tss64(init_tss[0].rsp0, init_tss[0].rsp1, init_tss[0].rsp2, init_tss[0].ist1, init_tss[0].ist2, init_tss[0].ist3, init_tss[0].ist4, init_tss[0].ist5, init_tss[0].ist6, init_tss[0].ist7);
+	SetTss64(init_tss[0].rsp0, init_tss[0].rsp1, init_tss[0].rsp2, init_tss[0].ist1, init_tss[0].ist2, init_tss[0].ist3, init_tss[0].ist4, init_tss[0].ist5, init_tss[0].ist6, init_tss[0].ist7);
 
 	__asm__ __volatile__("movq	%%fs,	%0 \n\t":"=a"(prev->thread->fs));
 	__asm__ __volatile__("movq	%%gs,	%0 \n\t":"=a"(prev->thread->gs));
@@ -122,7 +121,10 @@ void user_level_function(){
                                     "sysenter                           \n\t"
                                     "sysexit_return_address:            \n\t"
                                     :"=a"(ret):"0"(1),"D"(output_string):"memory");
-    while(1);
+    while(1){
+	    // Endless loop
+	    continue;
+	}
 }
 
 unsigned long do_execve(struct pt_regs * regs){
@@ -200,7 +202,7 @@ unsigned long do_fork(struct pt_regs * regs, unsigned long clone_flags, unsigned
 	thd->rsp = (unsigned long)tsk + STACK_SIZE - sizeof(struct pt_regs);
 
     // 如果
-	if(!(tsk->flags & PF_KTHREAD)) {// 进程运行于应用层空间， 就将预执行函数设置为： ret_system_call
+	if (!(tsk->flags & PF_KTHREAD)) {// 进程运行于应用层空间， 就将预执行函数设置为： ret_system_call
 		thd->rip = regs->rip = (unsigned long)ret_system_call;
 		printk("app run in appLabel, pre function is ret_system_call");
 	}
@@ -267,7 +269,7 @@ void task_init() {
 	wrmsr(0x176,(unsigned long)system_call);
 
 //	init_thread,init_tss
-	set_tss64(init_thread.rsp0, init_tss[0].rsp1, init_tss[0].rsp2, init_tss[0].ist1, init_tss[0].ist2, init_tss[0].ist3, init_tss[0].ist4, init_tss[0].ist5, init_tss[0].ist6, init_tss[0].ist7);
+	SetTss64(init_thread.rsp0, init_tss[0].rsp1, init_tss[0].rsp2, init_tss[0].ist1, init_tss[0].ist2, init_tss[0].ist3, init_tss[0].ist4, init_tss[0].ist5, init_tss[0].ist6, init_tss[0].ist7);
 
 	init_tss[0].rsp0 = init_thread.rsp0;
 
@@ -296,6 +298,9 @@ void task_init() {
 
 unsigned long do_exit(unsigned long code) {
     printk("exit task is running,arg:%#018lx\n",code);
-    while(1);
+    while(1){
+	    // Endless loop
+	    continue;
+	}
 }
 

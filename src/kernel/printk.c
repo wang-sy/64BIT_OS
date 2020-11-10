@@ -1,7 +1,6 @@
 #include <stdarg.h>
 #include "printk.h"
 #include "lib.h"
-#include "linkage.h"
 #include "position.h"
 
 
@@ -105,7 +104,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 	for(str = buf; *fmt; fmt++)
 	{
 
-		if(*fmt != '%')
+		if (*fmt != '%')
 		{
 			*str++ = *fmt;
 			continue;
@@ -130,13 +129,13 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 			/* get field width */
 
 			field_width = -1;
-			if(is_digit(*fmt))
+			if (is_digit(*fmt))
 				field_width = skip_atoi(&fmt);
-			else if(*fmt == '*')
+			else if (*fmt == '*')
 			{
 				fmt++;
 				field_width = va_arg(args, int);
-				if(field_width < 0)
+				if (field_width < 0)
 				{
 					field_width = -field_width;
 					flags |= LEFT;
@@ -146,22 +145,22 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 			/* get the precision */
 
 			precision = -1;
-			if(*fmt == '.')
+			if (*fmt == '.')
 			{
 				fmt++;
-				if(is_digit(*fmt))
+				if (is_digit(*fmt))
 					precision = skip_atoi(&fmt);
-				else if(*fmt == '*')
+				else if (*fmt == '*')
 				{	
 					fmt++;
 					precision = va_arg(args, int);
 				}
-				if(precision < 0)
+				if (precision < 0)
 					precision = 0;
 			}
 			
 			qualifier = -1;
-			if(*fmt == 'h' || *fmt == 'l' || *fmt == 'L' || *fmt == 'Z')
+			if (*fmt == 'h' || *fmt == 'l' || *fmt == 'L' || *fmt == 'Z')
 			{	
 				qualifier = *fmt;
 				fmt++;
@@ -171,7 +170,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 			{
 				case 'c':
 
-					if(!(flags & LEFT))
+					if (!(flags & LEFT))
 						while(--field_width > 0)
 							*str++ = ' ';
 					*str++ = (unsigned char)va_arg(args, int);
@@ -182,15 +181,15 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 				case 's':
 				
 					s = va_arg(args,char *);
-					if(!s)
+					if (!s)
 						s = '\0';
 					len = strlen(s);
-					if(precision < 0)
+					if (precision < 0)
 						precision = len;
-					else if(len > precision)
+					else if (len > precision)
 						len = precision;
 					
-					if(!(flags & LEFT))
+					if (!(flags & LEFT))
 						while(len < field_width--)
 							*str++ = ' ';
 					for(i = 0;i < len ;i++)
@@ -201,7 +200,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 
 				case 'o':
 					
-					if(qualifier == 'l')
+					if (qualifier == 'l')
 						str = number(str,va_arg(args,unsigned long),8,field_width,precision,flags);
 					else
 						str = number(str,va_arg(args,unsigned int),8,field_width,precision,flags);
@@ -209,7 +208,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 
 				case 'p':
 
-					if(field_width == -1)
+					if (field_width == -1)
 					{
 						field_width = 2 * sizeof(void *);
 						flags |= ZEROPAD;
@@ -224,7 +223,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 
 				case 'X':
 
-					if(qualifier == 'l')
+					if (qualifier == 'l')
 						str = number(str,va_arg(args,unsigned long),16,field_width,precision,flags);
 					else
 						str = number(str,va_arg(args,unsigned int),16,field_width,precision,flags);
@@ -236,7 +235,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 					flags |= SIGN;
 				case 'u':
 
-					if(qualifier == 'l')
+					if (qualifier == 'l')
 						str = number(str,va_arg(args,unsigned long),10,field_width,precision,flags);
 					else
 						str = number(str,va_arg(args,unsigned int),10,field_width,precision,flags);
@@ -244,7 +243,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 
 				case 'n':
 					
-					if(qualifier == 'l')
+					if (qualifier == 'l')
 					{
 						long *ip = va_arg(args,long *);
 						*ip = (str - buf);
@@ -264,7 +263,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 				default:
 
 					*str++ = '%';	
-					if(*fmt)
+					if (*fmt)
 						*str++ = *fmt;
 					else
 						fmt--;
@@ -299,11 +298,11 @@ int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...)
 
 	for(count = 0;count < i;count++)
 	{
-		if(buf[count] == '\n') doEnter(&globalPosition);
-		else if(buf[count] == '\b') doBackspace(&globalPosition);
-		else if(buf[count] == '\t') doTab(&globalPosition);
-		else doPrint(&globalPosition, BKcolor, FRcolor, font_ascii[buf[count]]);
-        doNext(&globalPosition);
+		if (buf[count] == '\n') DoEnter(&global_position);
+		else if (buf[count] == '\b') DoBackspace(&global_position);
+		else if (buf[count] == '\t') DoTab(&global_position);
+		else DoPrint(&global_position, BKcolor, FRcolor, font_ascii[buf[count]]);
+        DoNext(&global_position);
 	}
 	return i;
 }
@@ -324,11 +323,11 @@ int printk(const char * fmt,...){
 
 	for(count = 0;count < i;count++)
 	{
-		if(buf[count] == '\n') doEnter(&globalPosition);
-		else if(buf[count] == '\b') doBackspace(&globalPosition);
-		else if(buf[count] == '\t') doTab(&globalPosition);
-		else doPrint(&globalPosition, BLACK, WHITE, font_ascii[buf[count]]);
-        doNext(&globalPosition);
+		if (buf[count] == '\n') DoEnter(&global_position);
+		else if (buf[count] == '\b') DoBackspace(&global_position);
+		else if (buf[count] == '\t') DoTab(&global_position);
+		else DoPrint(&global_position, BLACK, WHITE, font_ascii[buf[count]]);
+        DoNext(&global_position);
 	}
 	return i;
 }
