@@ -1,5 +1,4 @@
 #include "position.h"
-#include "printk.h"
 #include "gate.h"
 #include "trap.h"
 #include "memory.h"
@@ -46,35 +45,35 @@ void Start_Kernel() {
 
 
     // 初始化与屏幕有关的全局变量
-    struct position* myPos = &globalPosition;
-    (*myPos) = (struct position){
+    struct Position* myPos = &global_position;
+    (*myPos) = (struct Position){
         SCREEN_ROW_LEN, SCREEN_COL_LEN,  // 屏幕行列
         0, 0, // 当前光标位置
         CHAR_ROW_LEN, CHAR_COL_LEN, // 字符行列
         COLOR_OUTPUT_ADDR, (SCREEN_ROW_LEN * SCREEN_COL_LEN * 4 + PAGE_4K_SIZE - 1) & PAGE_4K_MASK
     };
     
-    doClear(myPos);
+    DoClear(myPos);
     /*
     int curChar; 
     for(curChar = 40; curChar < 130; curChar ++){ // 输出给出的表格中的每一个字符
-        doPrint(myPos, 0xffffff00, 0x00000000, font_ascii[curChar]);
-        doNext(myPos);
-        if(curChar % 10 == 0) {
-            if(curChar % 20 == 0) doBackspace(myPos);
-            doEnter(myPos);
-            if(curChar % 30 == 0) doTab(myPos);
+        DoPrint(myPos, 0xffffff00, 0x00000000, font_ascii[curChar]);
+        DoNext(myPos);
+        if (curChar % 10 == 0) {
+            if (curChar % 20 == 0) DoBackspace(myPos);
+            DoEnter(myPos);
+            if (curChar % 30 == 0) DoTab(myPos);
         }
     }
-    doEnter(&globalPosition);
+    DoEnter(&global_position);
     color_printk(YELLOW,BLACK,"Hello World!");
-    doEnter(&globalPosition);
+    DoEnter(&global_position);
     */
     // TSS段描述符的段选择子加载到TR寄存器
-    load_TR(10);
+    LOAD_TR(10);
 
     // 初始化
-	set_tss64(
+	SetTss64(
         0xffff800000007c00, 0xffff800000007c00, 
         0xffff800000007c00, 0xffff800000007c00, 
         0xffff800000007c00, 0xffff800000007c00,
@@ -82,7 +81,7 @@ void Start_Kernel() {
         0xffff800000007c00, 0xffff800000007c00
     );
 
-	sys_vector_init(); // 初始化IDT表，确定各种异常的处理函数
+	SystemInterruptVectorInit(); // 初始化IDT表，确定各种异常的处理函数
 
     // 该变量来源于memory.c， 对其中的关键地址信息进行填充
     memory_management_struct.start_code = (unsigned long)& _text;
@@ -90,11 +89,11 @@ void Start_Kernel() {
 	memory_management_struct.end_data   = (unsigned long)& _edata;
 	memory_management_struct.end_brk    = (unsigned long)& _end;
 
-    init_memory(); // 输出所有内存信息
+    InitMemory(); // 输出所有内存信息
 
-    init_interrupt();
+    InitInterrupt();
 
-    task_init();
+    TaskInit();
 
     while(1){
         ;

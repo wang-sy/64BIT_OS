@@ -9,6 +9,8 @@
 *
 *	本模块作者：	田宇
 *	EMail:		345538255@qq.com
+*   本模块二次开发：王赛宇
+*   EMail:      wangsaiyu@cqu.edu.cn
 *
 *
 ***************************************************/
@@ -69,7 +71,7 @@ RESTORE_ALL:
 
 ret_from_exception:
 	/*GET_CURRENT(%ebx)	need rewrite*/
-ENTRY(ret_from_intr)
+ENTRY(ResetFromInterrupt)
 	jmp	RESTORE_ALL	/*need rewrite*/
 
 ENTRY(system_call)
@@ -102,9 +104,9 @@ ENTRY(system_call)
 	movq	%rdx,	%es;			 
 	movq	%rsp,	%rdi			 	
 			
-	callq	system_call_function		 	////////
+	callq	SystemCallFunction		 	////////
 
-ENTRY(ret_system_call)						
+ENTRY(ReturnFromSystemCall)						
 	movq	%rax,	0x80(%rsp)		 
 	popq	%r15				 
 	popq	%r14				 	
@@ -130,10 +132,10 @@ ENTRY(ret_system_call)
 	sysexit					 
 
 
-ENTRY(divide_error)
+ENTRY(DivideErrorEntry)
 	pushq	$0
 	pushq	%rax
-	leaq	do_divide_error(%rip),	%rax
+	leaq	DoDivideError(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 
 error_code:
@@ -174,14 +176,14 @@ error_code:
 
 	jmp	ret_from_exception	
 
-ENTRY(debug)
+ENTRY(DebugEntry)
 	pushq	$0
 	pushq	%rax
-	leaq	do_debug(%rip),	%rax
+	leaq	DoDebug(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(nmi)
+ENTRY(NMIEntry)
 	pushq	%rax
 	cld;			
 	pushq	%rax;	
@@ -215,126 +217,125 @@ ENTRY(nmi)
 	movq	$0,	%rsi
 	movq	%rsp,	%rdi
 
-	callq	do_nmi
+	callq	DoNMI
 
 	jmp	RESTORE_ALL
 
-ENTRY(int3)
+ENTRY(Int3Entry)
 	pushq	$0
 	pushq	%rax
-	leaq	do_int3(%rip),	%rax
+	leaq	DoInt3(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(overflow)
+ENTRY(OverflowEntry)
 	pushq	$0
 	pushq	%rax
-	leaq	do_overflow(%rip),	%rax
+	leaq	DoOverflow(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(bounds)
+ENTRY(BoundsEntry)
 	pushq	$0
 	pushq	%rax
-	leaq	do_bounds(%rip),	%rax
+	leaq	DoBounds(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(undefined_opcode)
+ENTRY(UndefinedOpcodeEntry)
 	pushq	$0
 	pushq	%rax
-	leaq	do_undefined_opcode(%rip),	%rax
+	leaq	DoUndefinedOPCode(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(dev_not_available)	/* need rewrite */
+ENTRY(DevNotAvailableEntry)	/* need rewrite */
 	pushq	$0
 	pushq	%rax
-	leaq	do_dev_not_available(%rip),	%rax
+	leaq	DoDevNotAvailable(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-
-ENTRY(double_fault)
+ENTRY(DoubleFaultEntry)
 	pushq	%rax
-	leaq	do_double_fault(%rip),	%rax
+	leaq	DoDoubleFault(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(coprocessor_segment_overrun)
+ENTRY(CoprocessorSegmentOverrunEntry)
 	pushq	$0
 	pushq	%rax
-	leaq	do_coprocessor_segment_overrun(%rip),	%rax
+	leaq	DoCoprocessorSegmentOverrun(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(invalid_TSS)
+ENTRY(InvalidTSSEntry)
 	pushq	%rax
-	leaq	do_invalid_TSS(%rip),	%rax
+	leaq	DoInvalidTSS(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(segment_not_present)
+ENTRY(SegmentNotPresentEntry)
 	pushq	%rax
-	leaq	do_segment_not_present(%rip),	%rax
+	leaq	DoSegmentNotPresent(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(stack_segment_fault)
+ENTRY(StackSegmentFaultEntry)
 	pushq	%rax
-	leaq	do_stack_segment_fault(%rip),	%rax
+	leaq	DoStackSegmentFault(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(general_protection)
+ENTRY(GeneralProtectionEntry)
 	pushq	%rax
-	leaq	do_general_protection(%rip),	%rax
+	leaq	DoGeneralProtection(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(page_fault)
+ENTRY(PageFaultEntry)
 	pushq	%rax
-	leaq	do_page_fault(%rip),	%rax
+	leaq	DoPageFault(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(x87_FPU_error)
+ENTRY(x87FPUErrorEntry)
 	pushq	$0
 	pushq	%rax
-	leaq	do_x87_FPU_error(%rip),	%rax
+	leaq	Dox87FPUError(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(alignment_check)
+ENTRY(AlignmentCheckEntry)
 	pushq	%rax
-	leaq	do_alignment_check(%rip),	%rax
+	leaq	DoAlignmentCheck(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(machine_check)
+ENTRY(MachineCheckEntry)
 	pushq	$0
 	pushq	%rax
-	leaq	do_machine_check(%rip),	%rax
+	leaq	DoMachineCheck(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(SIMD_exception)
+ENTRY(SIMDExceptionEntry)
 	pushq	$0
 	pushq	%rax
-	leaq	do_SIMD_exception(%rip),	%rax
+	leaq	DoSIMDException(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-ENTRY(virtualization_exception)
+ENTRY(VirtualizationExceptionEntry)
 	pushq	$0
 	pushq	%rax
-	leaq	do_virtualization_exception(%rip),	%rax
+	leaq	DoVirtualizationException(%rip),	%rax
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
 
-.global kernel_thread_func
-kernel_thread_func:
+.global KernelThreadFunc
+KernelThreadFunc:
 	popq	%r15	
 	popq	%r14	
 	popq	%r13	
@@ -359,5 +360,5 @@ kernel_thread_func:
 	movq	%rdx,	%rdi	
 	callq	*%rbx		
 	movq	%rax,	%rdi	
-	callq	do_exit		
+	callq	DoTaskExit		
 

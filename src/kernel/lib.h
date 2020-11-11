@@ -19,7 +19,7 @@
 
 #define NULL 0
 
-#define container_of(ptr,type,member)							\
+#define CONTAINER_OF(ptr,type,member)							\
 ({											\
 	typeof(((type *)0)->member) * p = (ptr);					\
 	(type *)((unsigned long)p - (unsigned long)&(((type *)0)->member));		\

@@ -2,7 +2,7 @@
 
 inline struct List * list_next(struct List * entry)
 {
-	if(entry->next != NULL)
+	if (entry->next != NULL)
 		return entry->next;
 	else
 		return NULL;
@@ -38,7 +38,7 @@ void list_del(struct List * entry)
 
 long list_is_empty(struct List * entry)
 {
-	if(entry == entry->next && entry->prev == entry)
+	if (entry == entry->next && entry->prev == entry)
 		return 1;
 	else
 		return 0;
