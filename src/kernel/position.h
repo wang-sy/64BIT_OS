@@ -74,5 +74,6 @@ void DoClear(struct Position * cur_position);
  * @param font_color 字体颜色
  * @param char_format  字体样式会根据字体样式进行颜色填充
  */ 
-void DoPrint(struct Position * cur_position,const int back_ground_color, const int font_color, const char* char_format);
+void DoPrint(struct Position * cur_position,const unsigned int back_ground_color,
+             const unsigned int font_color, const unsigned char* char_format);
 #endif

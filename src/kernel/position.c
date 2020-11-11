@@ -26,13 +26,25 @@
  * 同时，声明了全局变量 global_position，用于管理目前存在的唯一控制台的显示内容与预输入位置
  */
 
+/* =========================================================================
+ =                                 头的引入                                  =
+ =========================================================================*/
+
 #include "position.h"
 #include "lib.h"
+
+/* =========================================================================
+ =                                数据的声明                                 =
+ =========================================================================*/
 
 struct Position global_position;
 
 // 实现position中的一些函数
 char* defaultFill = "                                                                ";
+
+/* =========================================================================
+ =                        position.h中函数的实现                             =
+ =========================================================================*/
 
 /**
  * 给出当前的位置结构体，将光标移动到下一区域
@@ -54,7 +66,6 @@ void DoEnter(struct Position * cur_position){
     cur_position->x_position = cur_position->x_position + cur_position->x_char_size; // 平移
     if (cur_position->x_position >= cur_position->x_resolution) DoClear(cur_position); // 试探，如果错误，就直接重置
 }
-
 
 /**
  * 给出当前的位置结构体，在当前位置模拟退格键[退格键不会将回车删除（也就是说，无论怎么退格，Y值都不会变）]
@@ -96,7 +107,8 @@ void DoClear(struct Position * cur_position){
  * @param font_color 字体颜色
  * @param char_format  字体样式会根据字体样式进行颜色填充
  */ 
-void DoPrint(struct Position * cur_position,const int back_ground_color, const int font_color, const char* char_format){
+void DoPrint(struct Position * cur_position,const unsigned int back_ground_color,
+             const unsigned int font_color, const unsigned char* char_format){
     int row, col;
     // 遍历每一个像素块，进行输出
    for(row = cur_position->x_position; row < cur_position->x_position + cur_position->x_char_size; row ++){

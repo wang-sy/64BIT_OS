@@ -104,9 +104,9 @@ ENTRY(system_call)
 	movq	%rdx,	%es;			 
 	movq	%rsp,	%rdi			 	
 			
-	callq	system_call_function		 	////////
+	callq	SystemCallFunction		 	////////
 
-ENTRY(ret_system_call)						
+ENTRY(ReturnFromSystemCall)						
 	movq	%rax,	0x80(%rsp)		 
 	popq	%r15				 
 	popq	%r14				 	
@@ -256,7 +256,6 @@ ENTRY(DevNotAvailableEntry)	/* need rewrite */
 	xchgq	%rax,	(%rsp)
 	jmp	error_code
 
-
 ENTRY(DoubleFaultEntry)
 	pushq	%rax
 	leaq	DoDoubleFault(%rip),	%rax
@@ -335,8 +334,8 @@ ENTRY(VirtualizationExceptionEntry)
 	jmp	error_code
 
 
-.global kernel_thread_func
-kernel_thread_func:
+.global KernelThreadFunc
+KernelThreadFunc:
 	popq	%r15	
 	popq	%r14	
 	popq	%r13	
@@ -361,5 +360,5 @@ kernel_thread_func:
 	movq	%rdx,	%rdi	
 	callq	*%rbx		
 	movq	%rax,	%rdi	
-	callq	do_exit		
+	callq	DoTaskExit		
 

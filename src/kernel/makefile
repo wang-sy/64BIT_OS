@@ -1,4 +1,4 @@
-C_FILE_LIST=main position printk font gate trap memory lib interrupt task cpu
+C_FILE_LIST=main position printk font gate trap memory lib interrupt task cpu systemcall
 C_FILE_BUILD_GOALS=$(foreach file, $(C_FILE_LIST), ./build/$(file).o)
 
 ASM_FILE_LIST=head entry

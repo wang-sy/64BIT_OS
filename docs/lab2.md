@@ -1096,11 +1096,11 @@ extern inline int strlen(char* String);
  * @param s 输入的字符串
  * @return 返回的数字， 整数类型
  */
-int skip_atoi(const char **s)
+int SkipAtoi(const char **s)
 {
 	int i=0;
 
-	while (is_digit(**s))
+	while (IS_DIGIT(**s))
 		i = i*10 + *((*s)++) - '0';
 	return i;
 }
@@ -1122,10 +1122,10 @@ static char * number(char * str, long num, int base, int size, int precision,	in
 	int i;
 
 	if (type&SMALL) digits = "0123456789abcdefghijklmnopqrstuvwxyz";
-	if (type&LEFT) type &= ~ZEROPAD;
+	if (type&LEFT) type &= ~ZERO_PAD;
 	if (base < 2 || base > 36)
 		return 0;
-	c = (type & ZEROPAD) ? '0' : ' ' ;
+	c = (type & ZERO_PAD) ? '0' : ' ' ;
 	sign = 0;
 	if (type&SIGN && num < 0) {
 		sign='-';
@@ -1140,10 +1140,10 @@ static char * number(char * str, long num, int base, int size, int precision,	in
 	if (num == 0)
 		tmp[i++]='0';
 	else while (num!=0)
-		tmp[i++]=digits[do_div(num,base)];
+		tmp[i++]=digits[DO_DIV(num,base)];
 	if (i > precision) precision=i;
 	size -= precision;
-	if (!(type & (ZEROPAD + LEFT)))
+	if (!(type & (ZERO_PAD + LEFT)))
 		while(size-- > 0)
 			*str++ = ' ';
 	if (sign)
@@ -1173,12 +1173,12 @@ static char * number(char * str, long num, int base, int size, int precision,	in
 
 /**
  * 对给出的字符串进行初始化（识别占位符并且根据需求进行填入）
- * @param buf 格式化后的字符串将返回到buf数组中
- * @param fmt 一个字符串，表示需要进行格式化的字符串如："numa : %06d !\n"
+ * @param saving_buffer 格式化后的字符串将返回到buf数组中
+ * @param format_string 一个字符串，表示需要进行格式化的字符串如："numa : %06d !\n"
  * @param args 用户输入的参数，用于对前面的字符串进行填充
  * @return 格式化后字符串的结束位置
  */
-int vsprintf(char * buf,const char *fmt, va_list args)
+int vsprintf(char * saving_buffer,const char *format_string, va_list args)
 {
 	char * str,*s;
 	int flags;
@@ -1188,18 +1188,18 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 
 	int qualifier;		/* 'h', 'l', 'L' or 'Z' for integer fields */
 
-	for(str = buf; *fmt; fmt++)
+	for(str = saving_buffer; *format_string; format_string++)
 	{
 
-		if (*fmt != '%')
+		if (*format_string != '%')
 		{
-			*str++ = *fmt;
+			*str++ = *format_string;
 			continue;
 		}
 		flags = 0;
 		repeat:
-			fmt++;
-			switch(*fmt)
+			format_string++;
+			switch(*format_string)
 			{
 				case '-':flags |= LEFT;	
 				goto repeat;
@@ -1209,18 +1209,18 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 				goto repeat;
 				case '#':flags |= SPECIAL;	
 				goto repeat;
-				case '0':flags |= ZEROPAD;	
+				case '0':flags |= ZERO_PAD;	
 				goto repeat;
 			}
 
 			/* get field width */
 
 			field_width = -1;
-			if (is_digit(*fmt))
-				field_width = skip_atoi(&fmt);
-			else if (*fmt == '*')
+			if (IS_DIGIT(*format_string))
+				field_width = SkipAtoi(&format_string);
+			else if (*format_string == '*')
 			{
-				fmt++;
+				format_string++;
 				field_width = va_arg(args, int);
 				if (field_width < 0)
 				{
@@ -1232,14 +1232,14 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 			/* get the precision */
 
 			precision = -1;
-			if (*fmt == '.')
+			if (*format_string == '.')
 			{
-				fmt++;
-				if (is_digit(*fmt))
-					precision = skip_atoi(&fmt);
-				else if (*fmt == '*')
+				format_string++;
+				if (IS_DIGIT(*format_string))
+					precision = SkipAtoi(&format_string);
+				else if (*format_string == '*')
 				{	
-					fmt++;
+					format_string++;
 					precision = va_arg(args, int);
 				}
 				if (precision < 0)
@@ -1247,13 +1247,13 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 			}
 			
 			qualifier = -1;
-			if (*fmt == 'h' || *fmt == 'l' || *fmt == 'L' || *fmt == 'Z')
+			if (*format_string == 'h' || *format_string == 'l' || *format_string == 'L' || *format_string == 'Z')
 			{	
-				qualifier = *fmt;
-				fmt++;
+				qualifier = *format_string;
+				format_string++;
 			}
 							
-			switch(*fmt)
+			switch(*format_string)
 			{
 				case 'c':
 
@@ -1298,7 +1298,7 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 					if (field_width == -1)
 					{
 						field_width = 2 * sizeof(void *);
-						flags |= ZEROPAD;
+						flags |= ZERO_PAD;
 					}
 
 					str = number(str,(unsigned long)va_arg(args,void *),16,field_width,precision,flags);
@@ -1333,12 +1333,12 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 					if (qualifier == 'l')
 					{
 						long *ip = va_arg(args,long *);
-						*ip = (str - buf);
+						*ip = (str - saving_buffer);
 					}
 					else
 					{
 						int *ip = va_arg(args,int *);
-						*ip = (str - buf);
+						*ip = (str - saving_buffer);
 					}
 					break;
 
@@ -1350,45 +1350,45 @@ int vsprintf(char * buf,const char *fmt, va_list args)
 				default:
 
 					*str++ = '%';	
-					if (*fmt)
-						*str++ = *fmt;
+					if (*format_string)
+						*str++ = *format_string;
 					else
-						fmt--;
+						format_string--;
 					break;
 			}
 
 	}
 	*str = '\0';
-	return str - buf;
+	return str - saving_buffer;
 }
 
-char buf[500];
+char saving_buffer[500];
 
 /**
  * 给出颜色与需要输出的东西，进行输出
  * @param FRcolor 一个整形数字，表示想要输出的字体颜色
  * @param BKcolor 一个整形数字，表示想要输出的背景颜色
- * @param fmt 一个字符串，表示用户输出的字符串
+ * @param format_string 一个字符串，表示用户输出的字符串
  * @param ... 可变长的参数列表，表示想要填充到字符串中的参数
  */
-int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...)
+int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * format_string,...)
 {
 	int i = 0;
 	int count = 0;
 	int line = 0;
 	va_list args;
-	va_start(args, fmt);
+	va_start(args, format_string);
 
-	i = vsprintf(buf,fmt, args);
+	i = vsprintf(saving_buffer,format_string, args);
 
 	va_end(args);
 
 	for(count = 0;count < i;count++)
 	{
-		if (buf[count] == '\n') DoEnter(&global_position);
-		else if (buf[count] == '\b') DoBackspace(&global_position);
-		else if (buf[count] == '\t') DoTab(&global_position);
-		else DoPrint(&global_position, BKcolor, FRcolor, font_ascii[buf[count]]);
+		if (saving_buffer[count] == '\n') DoEnter(&global_position);
+		else if (saving_buffer[count] == '\b') DoBackspace(&global_position);
+		else if (saving_buffer[count] == '\t') DoTab(&global_position);
+		else DoPrint(&global_position, BKcolor, FRcolor, font_ascii[saving_buffer[count]]);
         DoNext(&global_position);
 	}
 	return i;
@@ -1456,13 +1456,13 @@ printf("%d,%d,%c\n", numa, numb, charc);
 我们来分析一下`printf`这个函数的构成：首先是一个字符串`"%d,%d,%c\n"`，然后后面会根据字符串中的占位符的数量跟上很多变量，也就是说：在写程序的时候不知道后面会跟多少参数，那么就可用这个库来解决这个问题，在这个程序中我们将`color_printk`声明成下面的样子：
 
 ```C
-int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...)
+int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * format_string,...)
 ```
 
-这里的`fmt`就相当于`printf`中的字符串，后面的`...`就是未知的参数了，我们来看下如何使用这个库：
+这里的`format_string`就相当于`printf`中的字符串，后面的`...`就是未知的参数了，我们来看下如何使用这个库：
 
 - `va_list args;`:创建一个 **va_list** 类型变量
-- `va_start(args, fmt)`：给出上一个参数的位置，将args指向第一个可变参数
+- `va_start(args, format_string)`：给出上一个参数的位置，将args指向第一个可变参数
 - `va_arg(args, int)`：取出下一个`int`类型的参数
 - `va_end(vl);`：结束标志
 
@@ -1475,7 +1475,7 @@ int color_printk(unsigned int FRcolor,unsigned int BKcolor,const char * fmt,...)
  (AP = ((char *) &(LASTARG) + __va_rounded_size (LASTARG)))//ap指向下一个参数，lastarg不变
 ```
 
-这个地方，我们给出的va_list就对应这里的ap，给出的上一个参数`fmt`就对应着这里的`LASTARG`，这里的含义是：`va_list`的第一个元素的内存地址是上一个参数的内存地址+`__va_rounded_size (LASTARG)`。其中`__va_rounded_size (LASTARG)`：
+这个地方，我们给出的va_list就对应这里的ap，给出的上一个参数`format_string`就对应着这里的`LASTARG`，这里的含义是：`va_list`的第一个元素的内存地址是上一个参数的内存地址+`__va_rounded_size (LASTARG)`。其中`__va_rounded_size (LASTARG)`：
 
 ```C
 #define __va_rounded_size(TYPE)  \
@@ -2620,7 +2620,7 @@ Label_Get_Mem_OK:
  * lengthHigh : lengthLow 拼接起来就是内存块长度
  * type 内存类型， 1 ：可被os使用， 2 ： 正在使用或不可使用 其他：没有意义
  */
-struct Memory_Block_E820{
+struct MemoryBlockE820{
     unsigned int baseAddrLow;
     unsigned int baseAddrHigh;
     unsigned int lengthLow;
@@ -2629,7 +2629,7 @@ struct Memory_Block_E820{
 };
 ```
 
-除此之外，我们还需要一个函数来对内存信息进行初始化，以读取存储在内存`0x7e00`为首的内存信息,就叫他`init_memory`,我们在`memory.h`中对其进行声明，在`memory.c`中对其进行实现即可：
+除此之外，我们还需要一个函数来对内存信息进行初始化，以读取存储在内存`0x7e00`为首的内存信息,就叫他`InitMemory`,我们在`memory.h`中对其进行声明，在`memory.c`中对其进行实现即可：
 
 ```C
 /**
@@ -2637,12 +2637,12 @@ struct Memory_Block_E820{
  * 默认读取基地址为0x7e00，这里填写线性地址
  * 会输出每一块内存的信息，并且输出总可用内存
  */ 
-void init_memory(){
+void InitMemory(){
 	unsigned long TotalMem = 0 ;
-	struct Memory_Block_E820 *p = NULL;	
+	struct MemoryBlockE820 *p = NULL;	
 	
 	printk("Display Physics Address MAP,Type(1:RAM,2:ROM or Reserved,3:ACPI Reclaim Memory,4:ACPI NVS Memory,Others:Undefine)\n");
-	p = (struct Memory_Block_E820 *)0xffff800000007e00; // 将基地址对齐
+	p = (struct MemoryBlockE820 *)0xffff800000007e00; // 将基地址对齐
 
     // 循环遍历，输出内存信息
 	for(int i = 0;i < 32;i++){
@@ -2674,7 +2674,7 @@ void init_memory(){
 ```C
 SystemInterruptVectorInit(); // 初始化IDT表，确定各种异常的处理函数
 
-init_memory(); // 输出所有内存信息
+InitMemory(); // 输出所有内存信息
 
 while(1){
     ;
@@ -2709,7 +2709,7 @@ C_FILE_BUILD_GOALS=$(foreach file, $(C_FILE_LIST), ./build/$(file).o)
  * length 内存块长度
  * type 内存类型， 1 ：可被os使用， 2 ： 正在使用或不可使用 其他：没有意义
  */
-struct Memory_Block_E820{
+struct MemoryBlockE820{
     unsigned long baseAddr;
     unsigned long length;
     unsigned int type;
@@ -2722,12 +2722,12 @@ struct Memory_Block_E820{
 /**
  * 全局的内存信息描述
  */
-struct Global_Memory_Descriptor{
-	struct Memory_Block_E820 	e820[32];
+struct GlobalMemoryDescriptor{
+	struct MemoryBlockE820 	e820[32];
 	unsigned long   e820_length;	
 };
 
-extern struct Global_Memory_Descriptor memory_management_struct;
+extern struct GlobalMemoryDescriptor memory_management_struct;
 ```
 
 相应的，我们需要对这部分的读取代码进行更改：
@@ -2744,7 +2744,7 @@ for(int i = 0;i < 32;i++, p++){
     if (p->type == 1) TotalMem += p->length;
 
     // 存储内存块信息， 更新长度
-    memory_management_struct.e820[i] = (struct Memory_Block_E820){p->baseAddr, p->length, p->type};
+    memory_management_struct.e820[i] = (struct MemoryBlockE820){p->baseAddr, p->length, p->type};
     memory_management_struct.e820_length = i;
 
     if (p->type > 4) break;		
@@ -2780,10 +2780,10 @@ for(int i = 0;i < 32;i++, p++){
 #define PAGE_4K_ALIGN(addr)   (((unsigned long)(addr) + PAGE_4K_SIZE - 1) & PAGE_4K_MASK)
 
 // 将内核层虚拟地址转换成物理地址
-#define Virt_To_Phy(addr)  ((unsigned long)(addr) - PAGE_OFFSET)
+#define CONVERT_VIRTUAL_ADDRESS_TO_PHYSICAL_ADDRESS(addr)  ((unsigned long)(addr) - PAGE_OFFSET)
 
 // 将物理地址转换成内核层虚拟地址
-#define Phy_To_Virt(addr)  ((unsigned long *)((unsigned long)(addr) + PAGE_OFFSET))
+#define CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(addr)  ((unsigned long *)((unsigned long)(addr) + PAGE_OFFSET))
 ```
 
 
@@ -2876,7 +2876,7 @@ struct Zone {
     unsigned long        zone_length;
     unsigned long        attribute;
 
-    struct Global_Memory_Descriptor * GMD_struct;
+    struct GlobalMemoryDescriptor * GMD_struct;
 
     unsigned long        page_using_count;
     unsigned long        page_free_count;
@@ -2912,8 +2912,8 @@ struct Zone {
  * @param end_brk 内核程序的结束地址
  * @param end_of_struct 内存页管理结构的结尾地址
  */
-struct Global_Memory_Descriptor{
-	struct Memory_Block_E820 	e820[32];
+struct GlobalMemoryDescriptor{
+	struct MemoryBlockE820 	e820[32];
 	unsigned long               e820_length;	
 
     unsigned long *   bits_map;
@@ -2970,7 +2970,7 @@ for(int i = 0;i < 32;i++, p++){
     if (p->type == 1) TotalMem += p->length;
 
     // 存储内存块信息， 更新长度
-    memory_management_struct.e820[i] = (struct Memory_Block_E820){p->baseAddr, p->length, p->type};
+    memory_management_struct.e820[i] = (struct MemoryBlockE820){p->baseAddr, p->length, p->type};
     memory_management_struct.e820_length = i;
 
 }
@@ -3041,7 +3041,7 @@ printk("zones_struct : %d, zones_size: %d, zones_length: %d\n",
 
 
 
-这一小节中，我们将全局描述子`Global_Memory_Descriptor`的存储空间进行了初始化，接下来我们要对其中的值进行填充。
+这一小节中，我们将全局描述子`GlobalMemoryDescriptor`的存储空间进行了初始化，接下来我们要对其中的值进行填充。
 
 
 
@@ -3053,18 +3053,18 @@ printk("zones_struct : %d, zones_size: %d, zones_length: %d\n",
 /**
 		 * ==========初始化 zones & pages 的内容信息 ==========
 		 */
-for(int curBlock = 0; curBlock <= memory_management_struct.e820_length; curBlock ++ ){
+for(int cur_block = 0; cur_block <= memory_management_struct.e820_length; cur_block ++ ){
 
     // 如果内存块不可用，那么跳过
-    if (memory_management_struct.e820[curBlock].type != 1) continue;
+    if (memory_management_struct.e820[cur_block].type != 1) continue;
 
     /*===================计算开始、结尾地址===================*/
 
     // 和上面统计可用页一样， 这里起点是右规后的地址
-    unsigned long start = PAGE_2M_ALIGN(memory_management_struct.e820[curBlock].baseAddr);
+    unsigned long start = PAGE_2M_ALIGN(memory_management_struct.e820[cur_block].baseAddr);
     // 计算结尾的向前对齐地址
     unsigned long end = (
-        (memory_management_struct.e820[curBlock].baseAddr + memory_management_struct.e820[curBlock].length)
+        (memory_management_struct.e820[cur_block].baseAddr + memory_management_struct.e820[cur_block].length)
         >> PAGE_2M_SHIFT
     ) << PAGE_2M_SHIFT; 
 
@@ -3203,11 +3203,11 @@ memory_management_struct.end_of_struct = (unsigned long)((unsigned long)
 
 printk("start_code:%#018lx,end_code:%#018lx,end_data:%#018lx, end_brk:%#018lx,end_of_struct:%#018lx\n",memory_management_struct.start_code, memory_management_struct.end_code,memory_management_struct.end_data,memory_management_struct.end_brk, memory_management_struct.end_of_struct);
 // 获取结构体所在页
-int curPageId = Virt_To_Phy(memory_management_struct.end_of_struct) >> PAGE_2M_SHIFT;
+int curPageId = CONVERT_VIRTUAL_ADDRESS_TO_PHYSICAL_ADDRESS(memory_management_struct.end_of_struct) >> PAGE_2M_SHIFT;
 
 // 对前面的页进行初始化
 for(int pageId = 0;pageId <= curPageId;pageId++) 
-    page_init(memory_management_struct.pages_struct + pageId,PG_PTable_Maped | PG_Kernel_Init | PG_Active | PG_Kernel);
+    PageInit(memory_management_struct.pages_struct + pageId,PG_PTable_Maped | PG_Kernel_Init | PG_Active | PG_Kernel);
 ```
 
 这里一使用了一些宏，这些宏的部分定义如下：
@@ -3229,14 +3229,14 @@ for(int pageId = 0;pageId <= curPageId;pageId++)
 #define PG_K_Share_To_U	(1 << 8)
 ```
 
-不同关键词的含义已经在注释中写清楚了，不同的位代表不同的属性，相互之间或起来互不影响，想要判断有没有该属性直接与该数字按位与就可以与出来了。接下来我们看一下`page_init`函数：
+不同关键词的含义已经在注释中写清楚了，不同的位代表不同的属性，相互之间或起来互不影响，想要判断有没有该属性直接与该数字按位与就可以与出来了。接下来我们看一下`PageInit`函数：
 
 ```C
 /**
  *  @param page 指针，指向想要被初始化的 page
  *  @param flag 初始化时的参数
  */
-void page_init(struct Page * page,unsigned long flag){
+void PageInit(struct Page * page,unsigned long flag){
 	if (!page->attribute) { // 如果该页没有使用过
         *(memory_management_struct.bits_map + ((page->PHY_address >> PAGE_2M_SHIFT) >> 6)) |= 1UL << (page->PHY_address >> PAGE_2M_SHIFT) % 64;
         page->attribute = flag; // 将状态置为flag
@@ -3274,24 +3274,24 @@ void page_init(struct Page * page,unsigned long flag){
 ### 清空页表项
 
 ```C
-Global_CR3 = Get_gdt();
+Global_CR3 = GET_GDT();
 
 color_printk(INDIGO,BLACK,"Global_CR3\t:%#018lx\n",Global_CR3);
-color_printk(INDIGO,BLACK,"*Global_CR3\t:%#018lx\n",*Phy_To_Virt(Global_CR3) & (~0xff));
-color_printk(PURPLE,BLACK,"**Global_CR3\t:%#018lx\n",*Phy_To_Virt(*Phy_To_Virt (Global_CR3) & (~0xff)) & (~0xff));
+color_printk(INDIGO,BLACK,"*Global_CR3\t:%#018lx\n",*CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(Global_CR3) & (~0xff));
+color_printk(PURPLE,BLACK,"**Global_CR3\t:%#018lx\n",*CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(*CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS (Global_CR3) & (~0xff)) & (~0xff));
 
 for(i = 0;i < 10;i++)
-    *(Phy_To_Virt(Global_CR3) + i) = 0UL;
+    *(CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(Global_CR3) + i) = 0UL;
 
-flush_tlb();
+FLUSH_TLB();
 ```
 
-首先使用`get_gdt`获取CR3寄存器的基地址，CR3是页目录基址寄存器，保存页目录表的物理地址，也就是说：`*Global_CR3`表示的就是页表的地址，`**Global_CR3`表示的就是页表的第一项的内容。紧接着为了消除一致性页表映射，将页表的前十项清零，并且使用`flush_tlb`使清零生效。
+首先使用`GET_GDT`获取CR3寄存器的基地址，CR3是页目录基址寄存器，保存页目录表的物理地址，也就是说：`*Global_CR3`表示的就是页表的地址，`**Global_CR3`表示的就是页表的第一项的内容。紧接着为了消除一致性页表映射，将页表的前十项清零，并且使用`FLUSH_TLB`使清零生效。
 
-其中，Get_gdt与`flush_tlb`代码如下，这里就不做讲解了：
+其中，Get_gdt与`FLUSH_TLB`代码如下，这里就不做讲解了：
 
 ```C
-#define flush_tlb()                                                 \
+#define FLUSH_TLB()                                                 \
 do                                                                  \
 {                                                                   \
     unsigned long    tmpreg;                                        \
@@ -3304,7 +3304,7 @@ do                                                                  \
                              );                                     \
 }while(0)
 
-unsigned long * Get_gdt()
+unsigned long * GET_GDT()
 {
     unsigned long * tmp;
     __asm__ __volatile__    (
@@ -3407,7 +3407,7 @@ for(int cur_zone_id = begin_zone; cur_zone_id < end_zone; cur_zone_id ++){
                 // 循环初始化
                 for(int init_page_id = 0; init_page_id < number; init_page_id ++){
                     struct Page* init_page_ptr = memory_management_struct.pages_struct + st_page + init_page_id;
-                    page_init(init_page_ptr,page_flags);
+                    PageInit(init_page_ptr,page_flags);
                 }
                 // 找到了就返回页
                 return (struct Page *)(memory_management_struct.pages_struct + st_page);
@@ -3444,11 +3444,11 @@ return NULL;
 接下来我们来验证一下：
 
 ```C
-init_memory(); // 输出所有内存信息
+InitMemory(); // 输出所有内存信息
 
 printk("alloc pages!\n");
 
-struct Page* pages = alloc_pages(ZONE_NORMAL,64,PG_PTable_Maped | PG_Active | PG_Kernel);
+struct Page* pages = AllocPages(ZONE_NORMAL,64,PG_PTable_Maped | PG_Active | PG_Kernel);
 
 for(int i = 0;i <= 64;i++){
     printk("page%d\tattribute:%#018lx\taddress:%#018lx\t",i,(pages + i)->attribute,(pages + i)->PHY_address);
@@ -3982,7 +3982,7 @@ void DoIRQ(unsigned long regs,unsigned long nr) {
 
 
 
-#### task_struct——进程信息描述结构体
+#### TaskStruct——进程信息描述结构体
 
 ```C
 /**
@@ -3998,12 +3998,12 @@ void DoIRQ(unsigned long regs,unsigned long nr) {
  * @param signal 进程的信号量
  * @param priority 进程的优先级
  */
-struct task_struct {
+struct TaskStruct {
     struct List list;
     volatile long state;
     unsigned long flags;
 
-    struct mm_struct *mm;
+    struct MemoryStruct *mm;
     struct thread_struct *thread;
 
     /*0x0000,0000,0000,0000 - 0x0000,7fff,ffff,ffff 用户层*/
@@ -4023,9 +4023,9 @@ struct task_struct {
 
 
 
-#### mm_struct——内存分布描述结构体
+#### MemoryStruct——内存分布描述结构体
 
-在这一小节中，我们来看一下上节中提到的`mm_struct`结构体：
+在这一小节中，我们来看一下上节中提到的`MemoryStruct`结构体：
 
 ```C
 /**
@@ -4042,7 +4042,7 @@ struct task_struct {
  * @param start_stack 应用层栈基址
  * 
  */
-struct mm_struct {
+struct MemoryStruct {
     pml4t_t *pgd;// 指向一个页表
 
     unsigned long start_code,end_code;
@@ -4098,13 +4098,13 @@ struct thread_struct {
 
 
 
-#### task_union——使用联合体分配内核层的栈与进程描述子空间
+#### TaskUnion——使用联合体分配内核层的栈与进程描述子空间
 
 
 
 **什么是联合体？**
 
-联合体使用`union`来进行声明，和struct类似，在一个union中可以声明多个属性，但是不同点在于：结构体中所有成员线性排列，互不影响，联合体中所有成员都挤在一起，一定会互相影响，我们来看一下这里的`task_union`：
+联合体使用`union`来进行声明，和struct类似，在一个union中可以声明多个属性，但是不同点在于：结构体中所有成员线性排列，互不影响，联合体中所有成员都挤在一起，一定会互相影响，我们来看一下这里的`TaskUnion`：
 
 
 
@@ -4113,8 +4113,8 @@ struct thread_struct {
  * task_struct和内核层栈区共用一段内存
  * task --> stack 两者公用 stack的空间
  */
-union task_union {
-    struct task_struct task;
+union TaskUnion {
+    struct TaskStruct task;
     unsigned long stack[STACK_SIZE / sizeof(unsigned long)];
 }__attribute__((aligned (8)));    //8 Bytes align
 ```
@@ -4126,12 +4126,12 @@ union task_union {
 
 #define STACK_SIZE 1234
 
-union task_union {
+union TaskUnion {
     int temp;
     unsigned long stack[STACK_SIZE / sizeof(unsigned long)];
 }__attribute__((aligned (8)));    //8 Bytes align
 int main(){
-    union task_union temp;
+    union TaskUnion temp;
     printf("%ld,%ld\n", &(temp.temp), (temp.stack));
     return 0;
 }                                              
@@ -4154,8 +4154,8 @@ int main(){
 /** 实例化第一个进程 */
 
 
-struct task_struct *init_task[NR_CPUS] = {&init_task_union.task,0};
-struct mm_struct init_mm = {0};
+struct TaskStruct *init_task[NR_CPUS] = {&init_task_union.task,0};
+struct MemoryStruct init_mm = {0};
 
 
 // 初始化调用现场
@@ -4171,7 +4171,7 @@ struct thread_struct init_thread = {
 
 
 // 零号进程的实例
-union task_union init_task_union __attribute__((__section__ (".data.init_task"))) = (union task_union){
+union TaskUnion init_task_union __attribute__((__section__ (".data.init_task"))) = (union TaskUnion){
     .task = {
         .state = TASK_UNINTERRUPTIBLE,
         .flags = PF_KTHREAD,
@@ -4204,14 +4204,14 @@ union task_union init_task_union __attribute__((__section__ (".data.init_task"))
 
 
 
-#### tss_struct——IA-32e模式下的tss结构
+#### TSSStruct——IA-32e模式下的tss结构
 
 
 
 声明
 
 ```C
-struct tss_struct{
+struct TSSStruct{
 	unsigned int  reserved0;
 	unsigned long rsp0;
 	unsigned long rsp1;
@@ -4233,7 +4233,7 @@ struct tss_struct{
 实例化：
 
 ```C
-struct tss_struct init_tss[NR_CPUS] = { 
+struct TSSStruct init_tss[NR_CPUS] = { 
     [0 ... NR_CPUS-1] = {
         .reserved0 = 0,
         .rsp0 = (unsigned long)(init_task_union.stack + STACK_SIZE / sizeof(unsigned long)),
@@ -4260,10 +4260,10 @@ struct tss_struct init_tss[NR_CPUS] = {
 
 
 
-#### pt_regs —— 用于记录调用现场的结构体
+#### PTRegs —— 用于记录调用现场的结构体
 
 ```C
-struct pt_regs {
+struct PTRegs {
     unsigned long r15;
     unsigned long r14;
     unsigned long r13;
@@ -4299,11 +4299,11 @@ struct pt_regs {
 
 ![image](pics/lab2/281409208002531.png)
 
-一个线程对应着两个栈，一个是内核栈还有一个是用户栈，sp指针指向内核栈。图中的结构就是我们定义的：`task_union`，现在我们知道这个`task_union`的中间地址了，我们该如何得知这个联合体的首地址呢？这就要用到刚才定义的`32Btye`对齐了，当他是三十二字节对其的情况下，我们直接将当前地址向前对齐就可以得到首地址了。当然了，值得注意的是我们的栈大小为`32Byte`，和上图所示有细微的差异，不过整体来说方法完全相同：
+一个线程对应着两个栈，一个是内核栈还有一个是用户栈，sp指针指向内核栈。图中的结构就是我们定义的：`TaskUnion`，现在我们知道这个`TaskUnion`的中间地址了，我们该如何得知这个联合体的首地址呢？这就要用到刚才定义的`32Btye`对齐了，当他是三十二字节对其的情况下，我们直接将当前地址向前对齐就可以得到首地址了。当然了，值得注意的是我们的栈大小为`32Byte`，和上图所示有细微的差异，不过整体来说方法完全相同：
 
 ```C
-inline struct task_struct * get_current() {
-	struct task_struct * current = NULL;
+inline struct TaskStruct * get_current() {
+	struct TaskStruct * current = NULL;
 	__asm__ __volatile__ ("andq %%rsp,%0	\n\t":"=r"(current):"0"(~32767UL));
 	return current;
 }
@@ -4350,7 +4350,7 @@ do{							\
 /**
  * 进程切换的处理函数， 得到当前和下一个进程的地址， 进行切换
  */
-void __switch_to(struct task_struct *prev,struct task_struct *next) {
+void __switch_to(struct TaskStruct *prev,struct TaskStruct *next) {
 
 	init_tss[0].rsp0 = next->thread->rsp0;
 	set_tss64(init_tss[0].rsp0, init_tss[0].rsp1, init_tss[0].rsp2, init_tss[0].ist1, init_tss[0].ist2, init_tss[0].ist3, init_tss[0].ist4, init_tss[0].ist5, init_tss[0].ist6, init_tss[0].ist7);
@@ -4382,11 +4382,11 @@ void __switch_to(struct task_struct *prev,struct task_struct *next) {
 /**
  * 初始化init进程， 并且进行进程切换
  */
-void task_init() {
-    struct task_struct *p = NULL;
+void TaskInit() {
+    struct TaskStruct *p = NULL;
 
     // 初始化初始进程
-    init_mm = (struct mm_struct){
+    init_mm = (struct MemoryStruct){
         (pml4t_t *)Global_CR3,
         memory_management_struct.start_code, memory_management_struct.end_code,
         (unsigned long)&_data, memory_management_struct.end_data,
@@ -4400,9 +4400,9 @@ void task_init() {
     init_tss[0].rsp0 = init_thread.rsp0;
 
     list_init(&init_task_union.task.list); // 将当前的前后都置为自己
-    kernel_thread(init, 10, CLONE_FS | CLONE_FILES | CLONE_SIGNAL);
+    CreateKernelThread(init, 10, CLONE_FS | CLONE_FILES | CLONE_SIGNAL);
     init_task_union.task.state = TASK_RUNNING;
-    p = container_of(list_next(&current->list),struct task_struct,list);
+    p = CONTAINER_OF(list_next(&current->list),struct TaskStruct,list);
     switch_to(current,p);
 }
 ```
@@ -4418,7 +4418,7 @@ void task_init() {
       .quad init_task_union + 32768
   ```
 
-- 后半段中`kernel_thread`使用`init`函数创建出了第二个进程，并且使用`switch_to`宏定义进行了函数之间的切换。这个被创建出来，并且切换过去的进程就是`init`进程。
+- 后半段中`CreateKernelThread`使用`init`函数创建出了第二个进程，并且使用`switch_to`宏定义进行了函数之间的切换。这个被创建出来，并且切换过去的进程就是`init`进程。
 
   这里传入的`init`如下：
 
@@ -4433,14 +4433,14 @@ void task_init() {
   }
   ```
 
-  有了`init`进程需要执行的程序，接下来我们调用了`kernel_thread`来为操作系统创建进程：
+  有了`init`进程需要执行的程序，接下来我们调用了`CreateKernelThread`来为操作系统创建进程：
 
   ```C
   /**
    * 创建进程的函数， 传入一个函数指针以及一些参数， 为操作系统创建一个进程
    */
-  int kernel_thread(unsigned long (* fn)(unsigned long), unsigned long arg, unsigned long flags) {
-      struct pt_regs regs; // 用于保存现场的结构体
+  int CreateKernelThread(unsigned long (* fn)(unsigned long), unsigned long arg, unsigned long flags) {
+      struct PTRegs regs; // 用于保存现场的结构体
       memset(&regs,0,sizeof(regs));
   
   
@@ -4452,34 +4452,34 @@ void task_init() {
       regs.cs = KERNEL_CS;
       regs.ss = KERNEL_DS;
       regs.rflags = (1 << 9);
-      regs.rip = (unsigned long)kernel_thread_func;
+      regs.rip = (unsigned long)KernelThreadFunc;
   
-      return do_fork(&regs,flags,0,0);
+      return DoFork(&regs,flags,0,0);
   }
   ```
 
-  在这个函数中，我们创建了一个`pt_regs`结构体，来为新的进程准备执行现场的数据，我们最需要关注其中的两点
+  在这个函数中，我们创建了一个`PTRegs`结构体，来为新的进程准备执行现场的数据，我们最需要关注其中的两点
 
-  - **`regs.rip = (unsigned long)kernel_thread_func;`** :将`kernel_thread_func`的入口进行保存，在执行相应进程前，会先执行`kernel_thread_func`函数。
+  - **`regs.rip = (unsigned long)KernelThreadFunc;`** :将`KernelThreadFunc`的入口进行保存，在执行相应进程前，会先执行`KernelThreadFunc`函数。
 
-  - **`do_fork(&regs,flags,0,0)`**：将新进程的执行现场数据传递给`do_fork`函数，进行进一步处理
+  - **`DoFork(&regs,flags,0,0)`**：将新进程的执行现场数据传递给`DoFork`函数，进行进一步处理
 
-  - `do_fork`函数的实现
+  - `DoFork`函数的实现
 
     ```C
-    unsigned long do_fork(struct pt_regs * regs, unsigned long clone_flags, unsigned long stack_start, unsigned long stack_size) {
-    	struct task_struct *tsk = NULL;
+    unsigned long DoFork(struct PTRegs * regs, unsigned long clone_flags, unsigned long stack_start, unsigned long stack_size) {
+    	struct TaskStruct *tsk = NULL;
     	struct thread_struct *thd = NULL;
     	struct Page *p = NULL;
     	
-    	printk("alloc_pages,bitmap:%#018lx\n",*memory_management_struct.bits_map);
+    	printk("AllocPages,bitmap:%#018lx\n",*memory_management_struct.bits_map);
     
-    	p = alloc_pages(ZONE_NORMAL,1,PG_PTable_Maped | PG_Active | PG_Kernel);// 申请页
+    	p = AllocPages(ZONE_NORMAL,1,PG_PTable_Maped | PG_Active | PG_Kernel);// 申请页
     
-    	printk("alloc_pages,bitmap:%#018lx\n",*memory_management_struct.bits_map);
+    	printk("AllocPages,bitmap:%#018lx\n",*memory_management_struct.bits_map);
     
-    	tsk = (struct task_struct *)Phy_To_Virt(p->PHY_address); // 将线程描述子放到相应的页中
-    	printk("struct task_struct address:%#018lx\n",(unsigned long)tsk);
+    	tsk = (struct TaskStruct *)CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(p->PHY_address); // 将线程描述子放到相应的页中
+    	printk("struct TaskStruct address:%#018lx\n",(unsigned long)tsk);
     
     	memset(tsk,0,sizeof(*tsk)); // 复制当前进程(复制的是势力， 没有改变指针指向的位置)
     	*tsk = *current;
@@ -4492,11 +4492,11 @@ void task_init() {
     	thd = (struct thread_struct *)(tsk + 1);
     	tsk->thread = thd;	
     
-    	memcpy(regs,(void *)((unsigned long)tsk + STACK_SIZE - sizeof(struct pt_regs)),sizeof(struct pt_regs));
+    	memcpy(regs,(void *)((unsigned long)tsk + STACK_SIZE - sizeof(struct PTRegs)),sizeof(struct PTRegs));
     
     	thd->rsp0 = (unsigned long)tsk + STACK_SIZE;
     	thd->rip = regs->rip;
-    	thd->rsp = (unsigned long)tsk + STACK_SIZE - sizeof(struct pt_regs);
+    	thd->rsp = (unsigned long)tsk + STACK_SIZE - sizeof(struct PTRegs);
     
         // 如果
     	if (!(tsk->flags & PF_KTHREAD)) // 进程运行于应用层空间， 就将预执行函数设置为： ResetFromInterrupt
@@ -4514,12 +4514,12 @@ void task_init() {
     - 然后将当前进程控制结构体中的数据复制到新分配物理页中，并进一步初始化
     - 最后根据程序是否运行在应用层空间，设置不同的执行函数(这里的`ResetFromInterrupt`是在异常处理阶段定义的函数，用于恢复异常处理现场)
 
-  - `kernel_thread_func`的实现
+  - `KernelThreadFunc`的实现
 
     ```C
-    extern void kernel_thread_func(void);
+    extern void KernelThreadFunc(void);
     __asm__ (
-    "kernel_thread_func:	\n\t"
+    "KernelThreadFunc:	\n\t"
     "	popq	%r15	\n\t"
     "	popq	%r14	\n\t"	
     "	popq	%r13	\n\t"	
@@ -4544,16 +4544,16 @@ void task_init() {
     "	movq	%rdx,	%rdi	\n\t"
     "	callq	*%rbx		\n\t"
     "	movq	%rax,	%rdi	\n\t"
-    "	callq	do_exit		\n\t"
+    "	callq	DoTaskExit		\n\t"
     );
     ```
 
-    这一段代码负责还原进程执行现场、运行进程以及退出进程，退出进程前，会执行`do_exit`函数退出进程。
+    这一段代码负责还原进程执行现场、运行进程以及退出进程，退出进程前，会执行`DoTaskExit`函数退出进程。
 
-    - `do_exit`实现：
+    - `DoTaskExit`实现：
 
       ```C
-      unsigned long do_exit(unsigned long code) {
+      unsigned long DoTaskExit(unsigned long code) {
           printk("exit task is running,arg:%#018lx\n",code);
           while(1){
 	    // Endless loop
@@ -4564,10 +4564,10 @@ void task_init() {
       }
       ```
 
-- 回到`task_init`函数， 我们后面使用宏定义`container_of`获得了对应的结构体，并且使用`switch_to`进行了切换。
+- 回到`TaskInit`函数， 我们后面使用宏定义`CONTAINER_OF`获得了对应的结构体，并且使用`switch_to`进行了切换。
 
   ```C
-  #define container_of(ptr,type,member)                            \
+  #define CONTAINER_OF(ptr,type,member)                            \
   ({    \
       typeof(((type *)0)->member) * p = (ptr);                    \
       (type *)((unsigned long)p - (unsigned long)&(((type *)0)->member));        \
@@ -4584,15 +4584,15 @@ void task_init() {
 
 
 
-如果你在过程中和我一样出现了问题，你可以看一下这一部分，我的主要问题在于：触发了保护中断，这是由于内存地址错误而导致的，通过观察我们异常处理的输出（`RIP`寄存器）我的错误定位在：从`__switch_to`函数退出时，执行`ret`语句时，出现了错误。于是我联想到这可能是因为退出后跳转到的地址有误而触发的中断，遂使用`printk`语句输出了将要跳转到的`kernel_thread_func`函数的地址，果然，该函数地址存在错误，引发了cpu产生中断。
+如果你在过程中和我一样出现了问题，你可以看一下这一部分，我的主要问题在于：触发了保护中断，这是由于内存地址错误而导致的，通过观察我们异常处理的输出（`RIP`寄存器）我的错误定位在：从`__switch_to`函数退出时，执行`ret`语句时，出现了错误。于是我联想到这可能是因为退出后跳转到的地址有误而触发的中断，遂使用`printk`语句输出了将要跳转到的`KernelThreadFunc`函数的地址，果然，该函数地址存在错误，引发了cpu产生中断。
 
 
 
-解决方法： 我这里并没有对这个错误产生的原因过度追究，因为我不大想学太多汇编的知识，还是希望将注意力集中在主线任务上。但是还是可以通过以往的经验提供一条行之有效的解决方案：将`kernel_thread_func`的定义迁移到`entry.S`中，声明为全局变量即可，声明如下：
+解决方法： 我这里并没有对这个错误产生的原因过度追究，因为我不大想学太多汇编的知识，还是希望将注意力集中在主线任务上。但是还是可以通过以往的经验提供一条行之有效的解决方案：将`KernelThreadFunc`的定义迁移到`entry.S`中，声明为全局变量即可，声明如下：
 
 ```gas
-.global kernel_thread_func
-kernel_thread_func:
+.global KernelThreadFunc
+KernelThreadFunc:
 	popq	%r15	
 	popq	%r14	
 	popq	%r13	
@@ -4617,21 +4617,21 @@ kernel_thread_func:
 	movq	%rdx,	%rdi	
 	callq	*%rbx		
 	movq	%rax,	%rdi	
-	callq	do_exit		
+	callq	DoTaskExit		
 ```
 
 同理，我们在`task.h`中使用`extern`语句进行引用即可。
 
 ### 运行测试
 
-在main.c中的 `Start_Kernel`函数中加入`task_init`函数：
+在main.c中的 `Start_Kernel`函数中加入`TaskInit`函数：
 
 ```C
-    init_memory(); // 输出所有内存信息
+    InitMemory(); // 输出所有内存信息
 
     InitInterrupt();
 
-    task_init();
+    TaskInit();
 ```
 
 使用`bochs`虚拟机进行执行：

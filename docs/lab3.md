@@ -17,7 +17,7 @@
 
 
 
-在上一章中，我们完成了操作系统内核层的框架，之所以说是框架，是因为对于每一个小的分支，我们只是完成了最基础的部分。在上一章的最后一节中，我们创建了一条`init`进程，在进入`init`进程后输出了`Hello World!`，完成后进入`do_exit`函数，我们在`do_exit`时，输出了一些提示信息，并让计算机宕机。
+在上一章中，我们完成了操作系统内核层的框架，之所以说是框架，是因为对于每一个小的分支，我们只是完成了最基础的部分。在上一章的最后一节中，我们创建了一条`init`进程，在进入`init`进程后输出了`Hello World!`，完成后进入`DoTaskExit`函数，我们在`DoTaskExit`时，输出了一些提示信息，并让计算机宕机。
 
 
 
@@ -90,7 +90,7 @@
 
 ### 内存管理
 
-我们通过`struct Global_Memory_Descriptor memory_management_struct`来描述全局的内存信息，当然，在初始阶段，我们通过另一个较为简单的数据结构：`struct Memory_Block_E820`来读取我们存储在指定地址处的内存信息。在完成简单的信息读取后，我们构建了`GMD->Zones->Pages`的三层结构，同时为了描述Pages的可用性，我们构建了`bits_map`，`bits_map`的每一位对应着一个`Page`，如果某`Page`可用，那么对应的 `bits_map`的位是0，其结构如下（上一章原图）：
+我们通过`struct GlobalMemoryDescriptor memory_management_struct`来描述全局的内存信息，当然，在初始阶段，我们通过另一个较为简单的数据结构：`struct MemoryBlockE820`来读取我们存储在指定地址处的内存信息。在完成简单的信息读取后，我们构建了`GMD->Zones->Pages`的三层结构，同时为了描述Pages的可用性，我们构建了`bits_map`，`bits_map`的每一位对应着一个`Page`，如果某`Page`可用，那么对应的 `bits_map`的位是0，其结构如下（上一章原图）：
 
 <img src="pics/lab2/内存组织.png" style="zoom: 25%;" />
 
@@ -100,18 +100,18 @@
 
 ### 线程管理（重点 与本章高度相关）
 
-首先需要明确的是：每个线程都有一套自己的描述子以及自己的栈空间，我们将其定义为`task_union`，也称其为`PCB`，其分布如下：
+首先需要明确的是：每个线程都有一套自己的描述子以及自己的栈空间，我们将其定义为`TaskUnion`，也称其为`PCB`，其分布如下：
 
 <img src="pics/lab2/task_union内存情况.png" style="zoom: 20%;" />
 
 其中，task是用来描述一个进程的基本信息的成员，我们需要记录如下信息：
 
 ```C
-struct task_struct {
+struct TaskStruct {
     struct List list;
     volatile long state;
     unsigned long flags;
-    struct mm_struct *mm;
+    struct MemoryStruct *mm;
     struct thread_struct *thread;
     unsigned long addr_limit; 
     long pid;
@@ -121,7 +121,7 @@ struct task_struct {
 };
 ```
 
-其中，较为重要的是：`mm_struct *mm`用于记录当前进程掌握的页信息，`thread_struct *thread`用于描述进程调度切换现场。
+其中，较为重要的是：`MemoryStruct *mm`用于记录当前进程掌握的页信息，`thread_struct *thread`用于描述进程调度切换现场。
 
 PCB之间的组织关系如下：
 
@@ -267,7 +267,7 @@ IA-32e模式下的TSS与上面的差别巨大，我们下章再讲。
 ### 系统调用返回模块
 
 ```gas
-ENTRY(ret_system_call)
+ENTRY(ReturnFromSystemCall)
     movq    %rax,    0x80(%rsp)
     popq    %r15
     popq    %r14
@@ -332,12 +332,12 @@ LOAD_TR(10);
 
 
 
-### 更改`do_fork`时调用的返回函数
+### 更改`DoFork`时调用的返回函数
 
 ```C
-if (!(tsk->flags & PF_KTHREAD)) {// 进程运行于应用层空间， 就将预执行函数设置为： ret_system_call
-    thd->rip = regs->rip = (unsigned long)ret_system_call;
-    printk("app run in appLabel, pre function is ret_system_call");
+if (!(tsk->flags & PF_KTHREAD)) {// 进程运行于应用层空间， 就将预执行函数设置为： ReturnFromSystemCall
+    thd->rip = regs->rip = (unsigned long)ReturnFromSystemCall;
+    printk("app run in appLabel, pre function is ReturnFromSystemCall");
 }
 ```
 
@@ -347,7 +347,7 @@ if (!(tsk->flags & PF_KTHREAD)) {// 进程运行于应用层空间， 就将预�
 /**
  * 初始化init进程， 并且进行进程切换
  */
-void task_init() {
+void TaskInit() {
 
 	wrmsr(0x174,KERNEL_CS);
 ```
@@ -367,38 +367,38 @@ void wrmsr(unsigned long address,unsigned long value){
 ```C++
 unsigned long init(unsigned long arg) {
 
-    struct pt_regs *regs;
+    struct PTRegs *regs;
 
     printk("init task is running,arg:%#018lx\n",arg);
 
-    current->thread->rip = (unsigned long)ret_system_call;
-    current->thread->rsp = (unsigned long)current + STACK_SIZE - sizeof(struct pt_regs);
-    regs = (struct pt_regs *)current->thread->rsp;
+    current->thread->rip = (unsigned long)ReturnFromSystemCall;
+    current->thread->rsp = (unsigned long)current + STACK_SIZE - sizeof(struct PTRegs);
+    regs = (struct PTRegs *)current->thread->rsp;
 
     __asm__    __volatile__ ( "movq    %1,    %%rsp    \n\t"
                               "pushq %2    \n\t"
-                              "jmp   do_execve \n\t"
+                              "jmp   DoExecve \n\t"
                               ::"D"(regs),"m"(current->thread->rsp),"m"(current->thread->rip):"memory");
 
     return 1;
 }
 
-void user_level_function(){
+void UserLevelFunction(){
     while(1){
 	    // Endless loop
 	    continue;
 	}
 }
 
-unsigned long do_execve(struct pt_regs * regs){
+unsigned long DoExecve(struct PTRegs * regs){
     regs->rdx = 0x800000;    //RIP
     regs->rcx = 0xa00000;    //RSP
     regs->rax = 1;
     regs->ds = 0;
     regs->es = 0;
-    color_printk(RED,BLACK,"do_execve task is running\n");
+    color_printk(RED,BLACK,"DoExecve task is running\n");
 
-    memcpy(user_level_function,(void *)0x800000,1024);
+    memcpy(UserLevelFunction,(void *)0x800000,1024);
 
     return 0;
 }
@@ -407,9 +407,9 @@ unsigned long do_execve(struct pt_regs * regs){
 我们来解读一下这一系列的代码：
 
 - 首先我们通过之前的`switch_to`函数切换到了`init`进程进行处理，init中进行了一些预处理
-- `do_execve`函数会通过设置`struct pt_regs`结构体的成员变量来搭建应用程序的执行环境
-- `do_execve`返回时，处理器会跳转到`ret_system_call`
-- 进入`ret_system_call`会将刚才操作的结构体中的寄存器返还到寄存器中
+- `DoExecve`函数会通过设置`struct PTRegs`结构体的成员变量来搭建应用程序的执行环境
+- `DoExecve`返回时，处理器会跳转到`ReturnFromSystemCall`
+- 进入`ReturnFromSystemCall`会将刚才操作的结构体中的寄存器返还到寄存器中
 
 
 
@@ -421,7 +421,7 @@ unsigned long do_execve(struct pt_regs * regs){
 
 ```C++
 	// for(int i = 0;i < 10;i++)
-	// 	*(Phy_To_Virt(Global_CR3) + i) = 0UL;
+	// 	*(CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(Global_CR3) + i) = 0UL;
 ```
 
 更改页表：
@@ -470,21 +470,21 @@ __PDE:
 
 ### 执行：
 
-我们对`user_level_function`中的函数进行反汇编，获取while语句与函数头之间的相对地址：
+我们对`UserLevelFunction`中的函数进行反汇编，获取while语句与函数头之间的相对地址：
 
 ```C++
-ffff800000109ac2 <user_level_function>:
+ffff800000109ac2 <UserLevelFunction>:
 ffff800000109ac2:	f3 0f 1e fa          	endbr64 
 ffff800000109ac6:	55                   	push   %rbp
 ffff800000109ac7:	48 89 e5             	mov    %rsp,%rbp
 ffff800000109aca:	f3 0f 1e fa          	endbr64 
-ffff800000109ace:	48 8d 05 f5 ff ff ff 	lea    -0xb(%rip),%rax        # ffff800000109aca <user_level_function+0x8>
+ffff800000109ace:	48 8d 05 f5 ff ff ff 	lea    -0xb(%rip),%rax        # ffff800000109aca <UserLevelFunction+0x8>
 ffff800000109ad5:	49 bb 76 2e 00 00 00 	movabs $0x2e76,%r11
 ffff800000109adc:	00 00 00 
 ffff800000109adf:	4c 01 d8             	add    %r11,%rax
 ffff800000109ae2:	c7 45 fc 00 00 00 00 	movl   $0x0,-0x4(%rbp)
 ffff800000109ae9:	83 45 fc 01          	addl   $0x1,-0x4(%rbp)
-ffff800000109aed:	eb fe                	jmp    ffff800000109aed <user_level_function+0x2b>
+ffff800000109aed:	eb fe                	jmp    ffff800000109aed <UserLevelFunction+0x2b>
 ```
 
 获取该地址后，我们计算出，死循环的地址：`jmp`相对函数头的偏移量是`0x2b`， 我们对该函数进行了拷贝，拷贝到了`0x800000`，那么拷贝后她的地址就是：
@@ -507,7 +507,7 @@ Next at t=81334049
 那么，如果我们想要调用`printk`呢？
 
 ```C++
-void user_level_function(){
+void UserLevelFunction(){
     printk("test");
     while(1){
 	    // Endless loop
@@ -516,16 +516,16 @@ void user_level_function(){
 }
 ```
 
-但是不幸的是，我们的`user_level_function`之中是不可以调用之前的写过的`pirntk`函数的，为什么呢？我们从反汇编的代码入手：
+但是不幸的是，我们的`UserLevelFunction`之中是不可以调用之前的写过的`pirntk`函数的，为什么呢？我们从反汇编的代码入手：
 
 ```C++
 ffff8000001058cb <printk>:
 .....
 .....
-ffff800000109ac2 <user_level_function>:
+ffff800000109ac2 <UserLevelFunction>:
 ```
 
-可以看到，`user_level_function`在内存中是在`printk`函数后面的，我们计算他们的地址上的差值：
+可以看到，`UserLevelFunction`在内存中是在`printk`函数后面的，我们计算他们的地址上的差值：
 
 ```python
 >>> 0x109ac2 - 0x1058cb
@@ -648,34 +648,34 @@ ENTRY(system_call)
 	movq	%rdx,	%es;			 
 	movq	%rsp,	%rdi			 	
 			
-	callq	system_call_function		 	////////
+	callq	SystemCallFunction		 	////////
 ```
 
-这里和之前写的还是有几分相似的，这里依然是将函数调用的现场进行保存，并且将当前的栈指针传递给函数`system_call_function`。这里的栈指针指向`pt_regs`。接下来我们就需要一个`system_call_function`来处理系统调用请求：
+这里和之前写的还是有几分相似的，这里依然是将函数调用的现场进行保存，并且将当前的栈指针传递给函数`SystemCallFunction`。这里的栈指针指向`PTRegs`。接下来我们就需要一个`SystemCallFunction`来处理系统调用请求：
 
 ```C++
 /**
  * 根据系统调用号返回一个系统调用处理函数
  */
-unsigned long system_call_function(struct pt_regs * regs) {
+unsigned long SystemCallFunction(struct PTRegs * regs) {
     return system_call_table[regs->rax](regs);
 }
 ```
 
-这里`system_call_function`的作用就是当用户进行一次系统调用的时候，我们就从`system_call_table`中按照相应的下标返回一个相应的处理函数。
+这里`SystemCallFunction`的作用就是当用户进行一次系统调用的时候，我们就从`system_call_table`中按照相应的下标返回一个相应的处理函数。
 
 ```C++
 #define MAX_SYSTEM_CALL_NR 128
 
-typedef unsigned long (* system_call_t)(struct pt_regs * regs);
+typedef unsigned long (* system_call_t)(struct PTRegs * regs);
 
-unsigned long no_system_call(struct pt_regs * regs) {
-    printk("no_system_call is calling,NR:%#04x\n",regs->rax);
+unsigned long SystemCallNotFound(struct PTRegs * regs) {
+    printk("SystemCallNotFound is calling,NR:%#04x\n",regs->rax);
     return -1;
 }
 
 system_call_t system_call_table[MAX_SYSTEM_CALL_NR] = {
-    [0 ... MAX_SYSTEM_CALL_NR-1] = no_system_call
+    [0 ... MAX_SYSTEM_CALL_NR-1] = SystemCallNotFound
 };
 
 ```
@@ -695,7 +695,7 @@ wrmsr(0x176,(unsigned long)system_call);
 ### 调用系统调用函数
 
 ```C++
-void user_level_function(){
+void UserLevelFunction(){
 
 	long ret = 0;
 	__asm__    __volatile__    (    "leaq    sysexit_return_address(%%rip), %%rdx                           \n\t"
@@ -731,7 +731,7 @@ void user_level_function(){
 我们将一号系统调用设计为进行输出的系统调用，首先我们需要写一个函数：
 
 ```C++
-unsigned long sys_printf(struct pt_regs * regs) {
+unsigned long SystemCallPrintf(struct PTRegs * regs) {
     printk((char *)regs->rdi);
     return 1;
 }
@@ -741,9 +741,9 @@ unsigned long sys_printf(struct pt_regs * regs) {
 
 ```C++
 system_call_t system_call_table[MAX_SYSTEM_CALL_NR] = {
-    [0] = (system_call_t)no_system_call,
-	[1] = (system_call_t)sys_printf,
-	[2 ... MAX_SYSTEM_CALL_NR-1] = (system_call_t)no_system_call,
+    [0] = (system_call_t)SystemCallNotFound,
+	[1] = (system_call_t)SystemCallPrintf,
+	[2 ... MAX_SYSTEM_CALL_NR-1] = (system_call_t)SystemCallNotFound,
 };
 ```
 
@@ -756,7 +756,7 @@ system_call_t system_call_table[MAX_SYSTEM_CALL_NR] = {
 我们更改自己的应用程序即可：
 
 ```C++
-void user_level_function(){
+void UserLevelFunction(){
 
 	long ret = 0;
 	char output_string[] = "Hello World!";

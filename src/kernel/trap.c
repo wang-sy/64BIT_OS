@@ -28,11 +28,45 @@
  *  - 被加载到IDT中断描述表中的是中断入口函数，中断入口函数在entry.S中定义，
  *    执行完中断入口函数后会跳转到中断处理函数中执行具体的中断处理。
  */
+
+/* =========================================================================
+=                                   引入头                                 =
+=========================================================================*/
+
+#include "printk.h"
+#include "lib.h"
 #include "trap.h"
 #include "gate.h"
 
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "EndlessLoop"
+
+/* =========================================================================
+=                    函数声明，本处的函数有entry.S实现                          =
+=========================================================================*/
+
+void DivideErrorEntry();
+void DebugEntry();
+void NMIEntry();
+void Int3Entry();
+void OverflowEntry();
+void BoundsEntry();
+void UndefinedOpcodeEntry();
+void DevNotAvailableEntry();
+void DoubleFaultEntry();
+void CoprocessorSegmentOverrunEntry();
+void InvalidTSSEntry();
+void SegmentNotPresentEntry();
+void StackSegmentFaultEntry();
+void GeneralProtectionEntry();
+void PageFaultEntry();
+void x87FPUErrorEntry();
+void AlignmentCheckEntry();
+void MachineCheckEntry();
+void SIMDExceptionEntry();
+void VirtualizationExceptionEntry();
+
+/* =========================================================================
+=                         中断处理函数的定义与实现                             =
+=========================================================================*/
 
 /**
  * 除法错误，主要原因是零作为了除数，这里直接将错误原因进行了输出
@@ -439,6 +473,9 @@ void DoVirtualizationException(unsigned long rsp,unsigned long error_code){
 	}
 }
 
+/* =========================================================================
+=                         trap.h中函数的实现                                  =
+=========================================================================*/
 
 /*使用gate.h中声明的函数将中断处理入口函数添加到IDT中
 其中，15号中断被英特尔保留，我们不去使用*/
@@ -465,4 +502,3 @@ void SystemInterruptVectorInit(){
 	SetTrapGate(19,1,SIMDExceptionEntry);
 	SetTrapGate(20,1,VirtualizationExceptionEntry);
 }
-#pragma clang diagnostic pop

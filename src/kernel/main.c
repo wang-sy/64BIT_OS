@@ -1,5 +1,4 @@
 #include "position.h"
-#include "printk.h"
 #include "gate.h"
 #include "trap.h"
 #include "memory.h"
@@ -90,11 +89,11 @@ void Start_Kernel() {
 	memory_management_struct.end_data   = (unsigned long)& _edata;
 	memory_management_struct.end_brk    = (unsigned long)& _end;
 
-    init_memory(); // 输出所有内存信息
+    InitMemory(); // 输出所有内存信息
 
     InitInterrupt();
 
-    task_init();
+    TaskInit();
 
     while(1){
         ;
