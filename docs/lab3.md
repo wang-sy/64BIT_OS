@@ -244,9 +244,15 @@ IDT与GDT是相似的，他们都是描述表，只不过描述的信息不同�
 
 IA-32e模式下的TSS与上面的差别巨大，我们下章再讲。
 
+## SYSENTER/SYSEXIT原理，以SYSENTR为例
 
+首先介绍一个这样的数据结构：（图片来自[sysenter/sysexit 原理](https://blog.csdn.net/yourenhello/article/details/17284233)）
 
+![img](pics/lab3/20131212161040421)
 
+MSR寄存器是一个非常大的寄存器，在我们这次的讲解中，他的作用是：记录SYSENTER、SYSEXIT的处理地址，也就是说：使用SYSENTER后，就会自动跳转到`SELECT[IA32_SYSENTER_CS] + IA32_SYSENTER_EIP`去执行，同时将栈空间切换到以`SELECT[IA32_SYSENTER_CS] + IA32_SYSENTER_ESP`为首的内存区域。
+
+在这个过程中，特权级会从3变为0, 换句话说就是从用户态变为了内核态，得知这一信息后，其他的处理方法就是单纯的函数跳转以及寄存器内容初始化了。
 
 ## 跳转到应用层
 
