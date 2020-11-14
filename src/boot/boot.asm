@@ -13,7 +13,7 @@ SectorBalance	equ	17
     jmp short Label_Start ; 这里是BS_jmpBoot 
     ; 实现的是段内转移，如果转移范围超过128，那么就会出错
     nop
-    BS_OEMName          db  'MINEboot'  ; 表示的是生产商的名字，我不要脸一点直接写自己名字了
+    BS_OEMName          db  '64BITBoot'  ; 分区名
     BPB_BytesPerSec     dw  512         ; 每个扇区的字节数
     BPB_SecPerClus      db  1           ; 每个簇的扇区数
     BPB_RsvdSecCnt	    dw	1           ; 保留扇区数
