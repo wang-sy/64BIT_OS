@@ -134,5 +134,11 @@ install_physical: all
 
 其中，`/media/wangsy/disk/`是我的U盘的自动挂载路径。我们再次运行：
 
+<img src="pics/lab5/image-20201116210023093.png" alt="image-20201116210023093" style="zoom:50%;" />
 
+接下来我们继续对原有的代码进行修改：
+
+![image-20201116230219510](pics/lab5/image-20201116230219510.png)
+
+等等等等，这里太多了，直接做一次提交，自己看吧。
 

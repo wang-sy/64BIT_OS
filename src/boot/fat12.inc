@@ -1,5 +1,5 @@
 RootDirSectors	equ	14 ; 根目录区占用的扇区数
-SectorNumOfRootDirStart	equ	19 ; 根目录区起始扇区号
+SectorNumOfRootDirStart	equ	25 ; 根目录区起始扇区号
 SectorNumOfFAT1Start	equ	1 ; 起始扇区号
 SectorBalance	equ	17	
 

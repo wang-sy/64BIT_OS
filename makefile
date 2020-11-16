@@ -35,7 +35,7 @@ install_physical: all
 
 	echo wangsy1990085 | sudo -S cp $(BOOT_BUILD_DIR)/loader.bin /media/wangsy/disk/
 	sudo cp $(KERNEL_BUILD_DIR)/kernel.bin /media/wangsy/disk/
-	sudo dd if=$(BOOT_BUILD_DIR)/boot.bin of=/dev/sdb bs=512 count=1 conv=notrunc
+	sudo dd if=$(BOOT_BUILD_DIR)/boot.bin of=/dev/sdc bs=512 count=1 conv=notrunc
 	echo 挂载完成，请将U盘插入并启动
 
 clean:

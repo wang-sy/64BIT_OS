@@ -6,8 +6,8 @@
 #include "task.h"
 
 #define COLOR_OUTPUT_ADDR (int *)0xffff800000a00000
-#define SCREEN_ROW_LEN 900 // 一共有多少行
-#define SCREEN_COL_LEN 1440 // 一共有多少列
+#define SCREEN_ROW_LEN 768 // 一共有多少行
+#define SCREEN_COL_LEN 1024 // 一共有多少列
 #define CHAR_ROW_LEN 16 // 一个字符一共有多少行
 #define CHAR_COL_LEN 8 // 一个字符一共有多少列
 
@@ -53,8 +53,8 @@ void Start_Kernel() {
         COLOR_OUTPUT_ADDR, (SCREEN_ROW_LEN * SCREEN_COL_LEN * 4 + PAGE_4K_SIZE - 1) & PAGE_4K_MASK
     };
     
-    DoClear(myPos);
     /*
+    DoClear(myPos);
     int curChar; 
     for(curChar = 40; curChar < 130; curChar ++){ // 输出给出的表格中的每一个字符
         DoPrint(myPos, 0xffffff00, 0x00000000, font_ascii[curChar]);
@@ -70,7 +70,7 @@ void Start_Kernel() {
     DoEnter(&global_position);
     */
     // TSS段描述符的段选择子加载到TR寄存器
-    LOAD_TR(10);
+    /*LOAD_TR(10);
 
     // 初始化
 	SetTss64(
@@ -93,7 +93,7 @@ void Start_Kernel() {
 
     InitInterrupt();
 
-    TaskInit();
+    TaskInit();*/
 
     while(1){
         ;

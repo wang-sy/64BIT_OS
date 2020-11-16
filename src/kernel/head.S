@@ -214,19 +214,19 @@ __PDPTE:
 
 __PDE:
 
-	.quad	0x000087	
-	.quad	0x200087
-	.quad	0x400087
-	.quad	0x600087
-	.quad	0x800087		/* 0x800083 */
-	.quad	0xe0000087		/*0x a00000*/
-	.quad	0xe0200087
-	.quad	0xe0400087
-	.quad	0xe0600087		/*0x1000000*/
-	.quad	0xe0800087
-	.quad	0xe0a00087
-	.quad	0xe0c00087
-	.quad	0xe0e00087
+	.quad	0x000083	
+	.quad	0x200083
+	.quad	0x400083
+	.quad	0x600083
+	.quad	0x800083		/* 0x800083 */
+	.quad	0xe0000083		/*0x a00000*/
+	.quad	0xe0200083
+	.quad	0xe0400083
+	.quad	0xe0600083		/*0x1000000*/
+	.quad	0xe0800083
+	.quad	0xe0a00083
+	.quad	0xe0c00083
+	.quad	0xe0e00083
 	.fill	499,8,0
 
 //=======	gdt_table
