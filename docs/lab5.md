@@ -82,33 +82,57 @@
 
 ### 启动盘制作
 
-接下来我们制作启动盘，如果使用作者的方案，由于FAT12只能管理32MB的空间，我们需要一个32MB的U盘，但是在2020年，想要买到一个32MB的U盘是及其困难的。加之我是在不想等了，所以我只好采取其他的方法，过程如下：
+接下来我们制作启动盘，如果使用作者的方案，由于FAT12只能管理32MB的空间，所以我们需要一个比较小的U盘，为此我买了一个32MB的U盘，接下来我们按照作者给出的方法，将这个U盘格式化为`USB-FFD`的格式，`USB-FFD`就是模拟软盘的U盘（这一步在windows下进行，我没有截图）。
 
-在Ubuntu系统下插入U盘，右键选择格式化（在ubuntu20.04系统下进行），对U盘进行格式化：
-
-<img src="pics/lab5/image-20201115001751690.png" alt="image-20201115001751690" style="zoom: 80%;" />
-
-在这里点击下一步，会让你进行确认，确认后即可对U盘进行格式化。格式化后，将我们之前写过的`boot.bin`拷贝到我们的文件系统下，这里的拷贝不是`cp`，而是使用：
+随后，我们进入linux系统，这里用的是`ubuntu 20.04`系统，使用：
 
 ```shell
-sudo dd if=boot.bin of=/dev/sdb bs=512 count=1 conv=notrunc
+sudo fdisk -l
 ```
 
-接着，我们将这个U盘插到电脑上，并且将USB-FDD模式的优先级提高，就可以了！我们来看一下效果：
+来查看自己U盘对应的盘符，下面是我U盘所对应的：
 
-<img src="pics/lab5/image-20201115005202291.png" alt="image-20201115005202291" style="zoom:67%;" />
+```
+Disk /dev/sdb：31.38 MiB，32899072 字节，64256 个扇区
+Disk model: UDisk           
+单元：扇区 / 1 * 512 = 512 字节
+扇区大小(逻辑/物理)：512 字节 / 512 字节
+I/O 大小(最小/最佳)：512 字节 / 512 字节
+磁盘标签类型：dos
+磁盘标识符：0x4e3a524f
+```
 
-这里提示`No LOADER Found`，我们使用：
+可以看到，我的U盘对应的是`/dev/sdb`。接下来，我们将原本的`boot.bin`写入U盘（这段我在makefile中写好了）：
 
 ```shell
-sudo dd if=loader.bin of=/dev/sdb bs=512 count=1 conv=notrunc
+sudo dd if=$(BOOT_BUILD_DIR)/boot.bin of=/dev/sdb bs=512 count=1 conv=notrunc
 ```
 
-将loader也拷贝进去，再次执行：
+接下来，我们让电脑默认使用`USB-FFD`进行启动，并且将U盘插入电脑，重启：
 
-<img src="pics/lab5/image-20201115005202291.png" alt="image-20201115005202291" style="zoom:67%;" />
+<img src="pics/lab5/image-20201115005202291.png" style="zoom:50%;" />
 
-结果没有变，还是notfound，为什么？这是因为我们在虚拟平台上的结构与在物理平台上的不同，所以我们需要进行一系列的调整：
+这时，我们的Boot就正常的运行起来了，但是为了在物理平台上良好的运行，我们需要对他进行一些更改：
 
-![image-20201115010001926](pics/lab5/image-20201115010001926.png)
+![image-20201116202953185](pics/lab5/image-20201116202953185.png)
+
+![image-20201116203109774](pics/lab5/image-20201116203109774.png)
+
+![image-20201116203433197](pics/lab5/image-20201116203433197.png)
+
+![image-20201116203445789](pics/lab5/image-20201116203445789.png)
+
+在进行了相应的更改后，我们也为makefile文件新加了一些方法：
+
+```makefile
+install_physical: all
+	sudo cp $(BOOT_BUILD_DIR)/loader.bin /media/wangsy/disk/
+	sudo cp $(KERNEL_BUILD_DIR)/kernel.bin /media/wangsy/disk/
+	sudo dd if=$(BOOT_BUILD_DIR)/boot.bin of=/dev/sdb bs=512 count=1 conv=notrunc
+	echo 挂载完成，请将U盘插入并启动
+```
+
+其中，`/media/wangsy/disk/`是我的U盘的自动挂载路径。我们再次运行：
+
+
 

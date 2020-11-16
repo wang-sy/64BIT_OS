@@ -6,32 +6,32 @@ BaseOfLoader	equ	0x1000 ; 记录Loader的基地址
 OffsetOfLoader	equ	0x00 ; 记录Loader的偏移量
 
 RootDirSectors	equ	14 ; 根目录区占用的扇区数
-SectorNumOfRootDirStart	equ	19 ; 根目录区起始扇区号
+SectorNumOfRootDirStart	equ	25 ; 根目录区起始扇区号
 SectorNumOfFAT1Start	equ	1 ; 起始扇区号
-SectorBalance	equ	17	
+SectorBalance	equ	23	
 
     jmp short Label_Start ; 这里是BS_jmpBoot 
     ; 实现的是段内转移，如果转移范围超过128，那么就会出错
     nop
-    BS_OEMName          db  'WSYboot'  ; 分区的名字
-    BPB_BytesPerSec     dw  0x200         ; 每个扇区的字节数
-    BPB_SecPerClus      db  0x8           ; 每个簇的扇区数
-    BPB_RsvdSecCnt	    dw	1           ; 保留扇区数
-	BPB_NumFATs	        db	2           ; FAT表的数量
-	BPB_RootEntCnt	    dw	0xe0         ; 根目录可容纳的目录项数
-	BPB_TotSec16	    dw	0x7d82        ; 总扇区数
-	BPB_Media	        db	0xf0        ; 介质描述符
-	BPB_FATSz16	        dw	0xc           ; 每FAT扇区数
-	BPB_SecPerTrk	    dw	0x3f          ; 每磁道扇区数
-	BPB_NumHeads	    dw	0xff           ; 磁头数
-	BPB_HiddSec	        dd	0           ; 隐藏扇区数
+    BS_OEMName          db  'WSYboot'  		; 分区的名字
+    BPB_BytesPerSec     dw  0x200       	; 每个扇区的字节数
+    BPB_SecPerClus      db  0x8         	; 每个簇的扇区数
+    BPB_RsvdSecCnt	    dw	1           	; 保留扇区数
+	BPB_NumFATs	        db	2           	; FAT表的数量
+	BPB_RootEntCnt	    dw	0xe0        	; 根目录可容纳的目录项数
+	BPB_TotSec16	    dw	0x7d82      	; 总扇区数
+	BPB_Media	        db	0xf0        	; 介质描述符
+	BPB_FATSz16	        dw	0xc         	; 每FAT扇区数
+	BPB_SecPerTrk	    dw	0x3f        	; 每磁道扇区数
+	BPB_NumHeads	    dw	0xff         	; 磁头数
+	BPB_HiddSec	        dd	0           	; 隐藏扇区数
 	BPB_TotSec32	    dd	0           
-	BS_DrvNum	        db	0           ; int 13h 的驱动器号
-	BS_Reserved1	    db	0           ; 未使用
-	BS_BootSig	        db	0x29        ; 扩展引导标记
-	BS_VolID	        dd	0           ; 卷序列号
-	BS_VolLab	        db	'boot loader' ; 卷标
-	BS_FileSysType	    db	'FAT12   '  ; 文件系统类型
+	BS_DrvNum	        db	0           	; int 13h 的驱动器号
+	BS_Reserved1	    db	0           	; 未使用
+	BS_BootSig	        db	29h        		; 扩展引导标记
+	BS_VolID	        dd	0           	; 卷序列号
+	BS_VolLab	        db	'boot loader'	; 卷标
+	BS_FileSysType	    db	'FAT12   '  	; 文件系统类型
 
 ; 将CS寄存器的段基址设置到DS、ES、SS中
 Label_Start:
