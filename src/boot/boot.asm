@@ -13,17 +13,17 @@ SectorBalance	equ	17
     jmp short Label_Start ; 这里是BS_jmpBoot 
     ; 实现的是段内转移，如果转移范围超过128，那么就会出错
     nop
-    BS_OEMName          db  '64BITBoot'  ; 分区名
-    BPB_BytesPerSec     dw  512         ; 每个扇区的字节数
-    BPB_SecPerClus      db  1           ; 每个簇的扇区数
+    BS_OEMName          db  'WSYboot'  ; 分区的名字
+    BPB_BytesPerSec     dw  0x200         ; 每个扇区的字节数
+    BPB_SecPerClus      db  0x8           ; 每个簇的扇区数
     BPB_RsvdSecCnt	    dw	1           ; 保留扇区数
 	BPB_NumFATs	        db	2           ; FAT表的数量
-	BPB_RootEntCnt	    dw	224         ; 根目录可容纳的目录项数
-	BPB_TotSec16	    dw	2880        ; 总扇区数
+	BPB_RootEntCnt	    dw	0xe0         ; 根目录可容纳的目录项数
+	BPB_TotSec16	    dw	0x7d82        ; 总扇区数
 	BPB_Media	        db	0xf0        ; 介质描述符
-	BPB_FATSz16	        dw	9           ; 每FAT扇区数
-	BPB_SecPerTrk	    dw	18          ; 每磁道扇区数
-	BPB_NumHeads	    dw	2           ; 磁头数
+	BPB_FATSz16	        dw	0xc           ; 每FAT扇区数
+	BPB_SecPerTrk	    dw	0x3f          ; 每磁道扇区数
+	BPB_NumHeads	    dw	0xff           ; 磁头数
 	BPB_HiddSec	        dd	0           ; 隐藏扇区数
 	BPB_TotSec32	    dd	0           
 	BS_DrvNum	        db	0           ; int 13h 的驱动器号
@@ -151,40 +151,54 @@ Label_No_LoaderBin:
 
 Label_FileName_Found:
 
-	mov	ax,	RootDirSectors
-	and	di,	0ffe0h
-	add	di,	01ah
-	mov	cx,	word	[es:di]
-	push	cx
-	add	cx,	ax
-	add	cx,	SectorBalance
-	mov	ax,	BaseOfLoader
-	mov	es,	ax
-	mov	bx,	OffsetOfLoader
-	mov	ax,	cx
+    mov    cx,    [BPB_SecPerClus]
+    and    di,    0ffe0h
+    add    di,    01ah
+    mov    ax,    word    [es:di]
+    push   ax
+    sub    ax,    2
+    mul    cl
+
+    mov    cx,    RootDirSectors
+    add    cx,    ax
+;   add    cx,    SectorBalance
+    add    cx,    SectorNumOfRootDirStart
+    mov    ax,    BaseOfLoader
+    mov    es,    ax
+    mov    bx,    OffsetOfLoader
+    mov    ax,    cx
 
 Label_Go_On_Loading_File:
-	push	ax
-	push	bx
-	mov	ah,	0eh
-	mov	al,	'.'
-	mov	bl,	0fh
-	int	10h
-	pop	bx
-	pop	ax
 
-	mov	cl,	1
-	call	Func_ReadOneSector
-	pop	ax
-	call	Func_GetFATEntry
-	cmp	ax,	0fffh
-	jz	Label_File_Loaded
-	push	ax
-	mov	dx,	RootDirSectors
-	add	ax,	dx
-	add	ax,	SectorBalance
-	add	bx,	[BPB_BytesPerSec]
-	jmp	Label_Go_On_Loading_File
+    push   ax
+    push   bx
+    mov    ah,    0eh
+    mov    al,    '.'
+    mov    bx,    0fh
+    int    10h
+    pop    bx
+    pop    ax
+
+    mov    cx,    [BPB_SecPerClus]
+    call   Func_ReadOneSector
+    pop    ax
+    call   Func_GetFATEntry
+    cmp    ax,    0fffh
+    jz     Label_File_Loaded
+    push   ax
+
+    mov    cx,    [BPB_SecPerClus]
+    sub    ax,    2
+    mul    cl
+
+    mov    dx,    RootDirSectors
+    add    ax,    dx
+;   add    ax,    SectorBalance
+    add    ax,    SectorNumOfRootDirStart
+
+    add    bx,    0x1000    ;add    bx,    [BPB_BytesPerSec]
+
+    jmp    Label_Go_On_Loading_File
 
 Label_File_Loaded: ; 找到了就跳转
 	
@@ -193,29 +207,18 @@ Label_File_Loaded: ; 找到了就跳转
 ;=======	从磁盘中读入一个扇区
 
 Func_ReadOneSector:
-	
-	push	bp
-	mov	bp,	sp
-	sub	esp,	2
-	mov	byte	[bp - 2],	cl
-	push	bx
-	mov	bl,	[BPB_SecPerTrk]
-	div	bl
-	inc	ah
-	mov	cl,	ah
-	mov	dh,	al
-	shr	al,	1
-	mov	ch,	al
-	and	dh,	1
-	pop	bx
-	mov	dl,	[BS_DrvNum]
-Label_Go_On_Reading:
-	mov	ah,	2
-	mov	al,	byte	[bp - 2]
+
+	push	dword	00h
+	push	dword	eax
+	push	word	es
+	push	word	bx
+	push	word	cx
+	push	word	10h
+	mov	ah,	42h	;read
+	mov	dl,	00h
+	mov	si,	sp
 	int	13h
-	jc	Label_Go_On_Reading
-	add	esp,	2
-	pop	bp
+	add	sp,	10h
 	ret
 
 ;=======	FAT表解析

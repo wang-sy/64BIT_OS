@@ -78,3 +78,37 @@
 
 一般而言，我们在装Ubuntu、Windows的时候都是选HDD的，但是我们实现的是软盘的形式，所以我们需要选择USB-FDD模式。
 
+
+
+### 启动盘制作
+
+接下来我们制作启动盘，如果使用作者的方案，由于FAT12只能管理32MB的空间，我们需要一个32MB的U盘，但是在2020年，想要买到一个32MB的U盘是及其困难的。加之我是在不想等了，所以我只好采取其他的方法，过程如下：
+
+在Ubuntu系统下插入U盘，右键选择格式化（在ubuntu20.04系统下进行），对U盘进行格式化：
+
+<img src="pics/lab5/image-20201115001751690.png" alt="image-20201115001751690" style="zoom: 80%;" />
+
+在这里点击下一步，会让你进行确认，确认后即可对U盘进行格式化。格式化后，将我们之前写过的`boot.bin`拷贝到我们的文件系统下，这里的拷贝不是`cp`，而是使用：
+
+```shell
+sudo dd if=boot.bin of=/dev/sdb bs=512 count=1 conv=notrunc
+```
+
+接着，我们将这个U盘插到电脑上，并且将USB-FDD模式的优先级提高，就可以了！我们来看一下效果：
+
+<img src="pics/lab5/image-20201115005202291.png" alt="image-20201115005202291" style="zoom:67%;" />
+
+这里提示`No LOADER Found`，我们使用：
+
+```shell
+sudo dd if=loader.bin of=/dev/sdb bs=512 count=1 conv=notrunc
+```
+
+将loader也拷贝进去，再次执行：
+
+<img src="pics/lab5/image-20201115005202291.png" alt="image-20201115005202291" style="zoom:67%;" />
+
+结果没有变，还是notfound，为什么？这是因为我们在虚拟平台上的结构与在物理平台上的不同，所以我们需要进行一系列的调整：
+
+![image-20201115010001926](pics/lab5/image-20201115010001926.png)
+
