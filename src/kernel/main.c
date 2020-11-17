@@ -4,6 +4,7 @@
 #include "memory.h"
 #include "interrupt.h"
 #include "task.h"
+#include "cpu.h"
 
 #define COLOR_OUTPUT_ADDR (int *)0xffff800000a00000
 #define SCREEN_ROW_LEN 768 // 一共有多少行
@@ -92,6 +93,10 @@ void Start_Kernel() {
     InitMemory(); // 输出所有内存信息
 
     InitInterrupt();
+
+    DoClear(&global_position);
+
+    InitCpu();
 
     TaskInit();
 
