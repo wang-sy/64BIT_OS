@@ -33,8 +33,8 @@ install: all
 
 install_physical: all
 
-	echo wangsy1990085 | sudo -S cp $(BOOT_BUILD_DIR)/loader.bin /media/wangsy/disk/
-	sudo cp $(KERNEL_BUILD_DIR)/kernel.bin /media/wangsy/disk/
+	echo wangsy1990085 | sudo -S cp $(BOOT_BUILD_DIR)/loader.bin /media/wangsy/94AE-F0E9/
+	sudo cp $(KERNEL_BUILD_DIR)/kernel.bin /media/wangsy/94AE-F0E9/
 	sudo dd if=$(BOOT_BUILD_DIR)/boot.bin of=/dev/sdc bs=512 count=1 conv=notrunc
 	echo 挂载完成，请将U盘插入并启动
 

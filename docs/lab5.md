@@ -112,6 +112,8 @@ sudo dd if=$(BOOT_BUILD_DIR)/boot.bin of=/dev/sdb bs=512 count=1 conv=notrunc
 
 <img src="pics/lab5/image-20201115005202291.png" style="zoom:50%;" />
 
+### 将bootloader移植到物理平台
+
 这时，我们的Boot就正常的运行起来了，但是为了在物理平台上良好的运行，我们需要对他进行一些更改：
 
 ![image-20201116202953185](pics/lab5/image-20201116202953185.png)
@@ -136,9 +138,29 @@ install_physical: all
 
 <img src="pics/lab5/image-20201116210023093.png" alt="image-20201116210023093" style="zoom:50%;" />
 
+
+
 接下来我们继续对原有的代码进行修改：
 
 ![image-20201116230219510](pics/lab5/image-20201116230219510.png)
 
-等等等等，这里太多了，直接做一次提交，自己看吧。
+等等等等，这里太多了，直接做一次提交，自己看吧。[改动内容](https://github.com/wang-sy/64BIT_OS/commit/fdfae9e4c671095b564deaa1aefb363eef168505)
+
+<img src="pics/lab5/image-20201116234759627.png" alt="image-20201116234759627" style="zoom:50%;" />
+
+## 将内核迁移到物理平台
+
+接下来我们需要对原来的内核程序进行一些小的更改：
+
+**DoFork函数：**
+
+![image-20201117154151734](pics/lab5/image-20201117154151734.png)
+
+<img src="pics/lab5/image-20201117154812711.png" alt="image-20201117154812711" style="zoom:67%;" />
+
+
+
+## 切换显示模式
+
+这里我就不想去深究显示模式的知识了，最近得知还有三个周就要期末考试了，我赶紧在期末考试前再赶赶进度。所以我就直接粘帖了作者的代码
 

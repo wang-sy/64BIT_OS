@@ -57,7 +57,7 @@ unsigned long * GetGDT(){
  *  @param page 指针，指向想要被初始化的 page
  *  @param flag 初始化时的参数
  */
-unsigned long PageInit(struct Page * page,unsigned long flag){
+unsigned long PageInit(struct Page * page, unsigned long flag){
     if (!page->attribute) { // 如果该页没有使用过
         *(memory_management_struct.bits_map + ((page->PHY_address >> PAGE_2M_SHIFT) >> 6)) |= 1UL << (page->PHY_address >> PAGE_2M_SHIFT) % 64;
         page->attribute = flag; // 将状态置为flag

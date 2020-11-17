@@ -70,12 +70,12 @@ void Start_Kernel() {
     DoEnter(&global_position);
     */
     // TSS段描述符的段选择子加载到TR寄存器
-    /*LOAD_TR(10);
+    LOAD_TR(10);
 
     // 初始化
 	SetTss64(
-        0xffff800000007c00, 0xffff800000007c00, 
-        0xffff800000007c00, 0xffff800000007c00, 
+        _stack_start, _stack_start, 
+        _stack_start, 0xffff800000007c00, 
         0xffff800000007c00, 0xffff800000007c00,
         0xffff800000007c00, 0xffff800000007c00, 
         0xffff800000007c00, 0xffff800000007c00
@@ -93,7 +93,7 @@ void Start_Kernel() {
 
     InitInterrupt();
 
-    TaskInit();*/
+    TaskInit();
 
     while(1){
         ;

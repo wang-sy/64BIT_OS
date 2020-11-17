@@ -145,6 +145,8 @@ unsigned long DoFork(struct PTRegs * regs, unsigned long clone_flags, unsigned l
     thd->rsp0 = (unsigned long)tsk + STACK_SIZE;
     thd->rip = regs->rip;
     thd->rsp = (unsigned long)tsk + STACK_SIZE - sizeof(struct PTRegs);
+    thd->fs = KERNEL_DS;
+	thd->gs = KERNEL_DS;
 
     // 如果
     if (!(tsk->flags & PF_KTHREAD)) {// 进程运行于应用层空间， 就将预执行函数设置为： ReturnFromSystemCall
@@ -215,7 +217,6 @@ void __switch_to(struct TaskStruct *prev,struct TaskStruct *next) {
  * 模拟的用户函数，借用系统调用，输出一段话，输出完毕后宕机
  */
 void UserLevelFunction(){
-
 	long ret = 0;
 	char output_string[] = "Hello World!";
 	__asm__    __volatile__    (    "leaq    sysexit_return_address(%%rip), %%rdx                           \n\t"
@@ -261,7 +262,7 @@ unsigned long DoExecve(struct PTRegs * regs){
     regs->es = 0;
     printk("DoExecve task is running\n");
 
-    memcpy(UserLevelFunction,(void *)0x800000,1024);
+    memcpy(UserLevelFunction,(void *)0x800000,2048);
     return 0;
 }
 
