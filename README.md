@@ -36,7 +36,11 @@
 
 ### [处理器体系结构文档](docs/lab4.md)
 
-![](pics/README/07.d06z.038.png)
+<img src="docs/pics/lab4/07.d06z.038.png" style="zoom:80%;" />
+
+## 从虚拟平台（bochs）向物理平台的迁移
+<img src="docs/pics/lab5/image-20201117154812711.png" style="zoom: 80%;" />
+
 
 ## 目录结构
 
@@ -49,7 +53,8 @@
 │  ├─ lab1.md
 │  ├─ lab2.md
 │  ├─ lab3.md
-│  └─ lab4.md
+|  ├─ lab4.md
+│  └─ lab5.md
 ├─ src
 │  ├─ boot
 │  └─ kernel
