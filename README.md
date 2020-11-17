@@ -39,8 +39,13 @@
 <img src="docs/pics/lab4/07.d06z.038.png" style="zoom:80%;" />
 
 ## 从虚拟平台（bochs）向物理平台的迁移
+### [迁移方法文档](docs/lab5.md)
 <img src="docs/pics/lab5/image-20201117154812711.png" style="zoom: 80%;" />
 
+## 内核主程序的完善
+### [内核主程序的知识点补充文档](docs/lab6.md)
+
+![image-20201118002655995](docs/pics/lab6/image-20201118002655995.png)
 
 ## 目录结构
 
@@ -54,11 +59,12 @@
 │  ├─ lab2.md
 │  ├─ lab3.md
 |  ├─ lab4.md
-│  └─ lab5.md
+|  ├─ lab5.md
+│  └─ lab6.md
 ├─ src
 │  ├─ boot
 │  └─ kernel
 ├─ LICENSE
 ├─ makefile
-├─ README.md
+└─ README.md
 ```
