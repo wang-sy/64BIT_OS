@@ -1,5 +1,5 @@
-#ifndef KERNEL_TASK_H
-#define KERNEL_TASK_H
+#ifndef _64BITOS_SRC_KERNEL_TASK_H
+#define _64BITOS_SRC_KERNEL_TASK_H
 
 /* =========================================================================
  =                                   头的引用                               =

@@ -29,8 +29,10 @@
  =                                 头的引入                                  =
  =========================================================================*/
 
+#include "position.h"
 #include "printk.h"
 #include "memory.h"
+#include "slab.h"
 #include "lib.h"
 
 /* =========================================================================
@@ -51,6 +53,76 @@ unsigned long * GetGDT(){
     );
     return tmp;
 }
+
+/* =========================================================================
+ =                             全局参数定义                                  =
+ =========================================================================*/
+
+// 全局内存信息描述子声明于memory.h， 定义于memory.c， 全局变量
+struct GlobalMemoryDescriptor memory_management_struct = {{0},0};;
+
+int ZONE_DMA_INDEX = 0;
+int ZONE_NORMAL_INDEX = 0;
+int ZONE_UNMAPED_INDEX = 0;
+
+unsigned long * Global_CR3 = NULL;
+
+void free_pages(struct Page * page,int number){	
+	int i = 0;
+	if (page == NULL) {
+		printk("free_pages() ERROR: page is invalid\n");
+		return ;
+	}	
+	if (number >= 64 || number <= 0) {
+		printk("free_pages() ERROR: number is invalid\n");
+		return ;	
+	}
+	for (i = 0;i<number;i++,page++) {
+		*(memory_management_struct.bits_map + ((page->PHY_address >> PAGE_2M_SHIFT) >> 6)) &= ~(1UL << (page->PHY_address >> PAGE_2M_SHIFT) % 64);
+		page->zone_struct->page_using_count--;
+		page->zone_struct->page_free_count++;
+		page->attribute = 0;
+	}
+}
+
+
+unsigned long page_clean(struct Page * page) {
+	page->reference_count--;
+	page->zone_struct->total_pages_link--;
+	if (!page->reference_count) {
+		page->attribute &= PG_PTable_Maped;
+	}
+	return 1;
+}
+
+/**
+ * 获取页的状态
+ * @param page 需要获取状态的页
+ */
+unsigned long get_page_attribute(struct Page * page) {
+    if(page == NULL) {
+        printk("get_page_attribute() ERROR: page == NULL\n");
+        return 0;
+    } else {
+		return page->attribute;
+	}
+}
+
+/**
+ * 更新一个页的状态
+ * @param page 被更改状态的页
+ * @param flags 将page的状态更改为flags
+ */
+unsigned long set_page_attribute(struct Page * page,unsigned long flags) {
+    if(page == NULL) {
+        printk("set_page_attribute() ERROR: page == NULL\n");
+        return 0;
+    } else {
+        page->attribute = flags;
+        return 1;
+    }
+}
+
 
 /**
  * 对某个内存页进行初始化， 在申请新的page时，对申请到的page调用本函数进行初始化
@@ -79,19 +151,6 @@ unsigned long PageInit(struct Page * page, unsigned long flag){
     return 0UL;
 }
 
-/* =========================================================================
- =                             全局参数定义                                  =
- =========================================================================*/
-
-// 全局内存信息描述子声明于memory.h， 定义于memory.c， 全局变量
-struct GlobalMemoryDescriptor memory_management_struct = {{0},0};;
-
-int ZONE_DMA_INDEX = 0;
-int ZONE_NORMAL_INDEX = 0;
-int ZONE_UNMAPED_INDEX = 0;
-
-unsigned long * Global_CR3 = NULL;
-
 /**
  * 读取内存中存储的内存块信息
  * 默认读取基地址为0x7e00，这里填写线性地址
@@ -106,19 +165,15 @@ void InitMemory(){
 
 	// ==========循环遍历，输出内存信息==========
 	for(int i = 0;i < 32;i++, p++){
-
 		if (p->type > 4 || p->length == 0 || p->type < 1) break;		
         // 输出内存信息
 		printk("%d ::: Address:%#018lx\tLength:%#018lx\tType:%#010x\n", i, p->baseAddr,p->length,p->type);
-
         // 统计可用内存
 		unsigned long tmp = 0;
 		if (p->type == 1) TotalMem += p->length;
-
 		// 存储内存块信息， 更新长度
 		memory_management_struct.e820[i] = (struct MemoryBlockE820){p->baseAddr, p->length, p->type};
 		memory_management_struct.e820_length = i;
-
 	}
 
     // 输出总可用内存
@@ -128,18 +183,14 @@ void InitMemory(){
 	/**
 	* ==========循环遍历，统计输出内存可用页的数量==========*/
 	for(int i = 0; i <= memory_management_struct.e820_length; i ++){
-		
 		if (memory_management_struct.e820[i].type != 1) continue;
-		
 		unsigned long start, end;
 		start = PAGE_2M_ALIGN(memory_management_struct.e820[i].baseAddr); // 计算开头的向后对齐地址
 		end = (
 			(memory_management_struct.e820[i].baseAddr + memory_management_struct.e820[i].length)
 			 >> PAGE_2M_SHIFT
 		) << PAGE_2M_SHIFT; // 计算结尾的向前对齐地址
-
 		if (end <= start) continue;
-
         TotalMem += (end - start) >> PAGE_2M_SHIFT;
 	}
 	printk("OS Can Used Total 2M PAGEs:%#010x=%010d\n",TotalMem,TotalMem);
@@ -206,32 +257,23 @@ void InitMemory(){
 			(memory_management_struct.e820[cur_block].baseAddr + memory_management_struct.e820[cur_block].length)
 			>> PAGE_2M_SHIFT
 		) << PAGE_2M_SHIFT; 
-
 		// 如果没有可用空间就跳过
 		if (end <= start) continue;
-
 		/*===================初始化zone===================*/
-
 		// 指针指向
 		struct Zone* curZone = memory_management_struct.zones_struct + memory_management_struct.zones_size;
 		memory_management_struct.zones_size ++;
-
 		curZone->zone_start_address = start;
 		curZone->zone_end_address = end;
 		curZone->zone_length = end - start;
-
 		curZone->page_using_count = 0;
 		curZone->page_free_count = (curZone->zone_length >> PAGE_2M_SHIFT);
-
 		curZone->total_pages_link = 0; // 总引用为0
-
 		curZone->attribute = 0;
 		curZone->GMD_struct = &memory_management_struct; // 这里取的是地址，因为前面的是指针
-
 		curZone->pages_length = (curZone->zone_length >> PAGE_2M_SHIFT);
 		// 基地址+起点所在页的数量
 		curZone->pages_group =  (struct Page *)(memory_management_struct.pages_struct + (start >> PAGE_2M_SHIFT));
-
 		printk("BLOCK ID :: %d, cur zone start page number ::: %d\n", cur_block ,(start >> PAGE_2M_SHIFT) );
 
 		/*===================初始化Pages===================*/
@@ -244,10 +286,8 @@ void InitMemory(){
 			// 当前page的物理地址就是： 当前zone的物理地址 + 第curPageId * 每一页的大小，其中curPageId从0开始
 			curPage->PHY_address = start + PAGE_2M_SIZE * curPageId;
 			curPage->attribute = 0;
-
 			curPage->reference_count = 0;
 			curPage->age = 0;
-			
 			// 把当前struct page结构体所代表的物理地址转换成bits_map映射位图中对应的位。
 			// 这里的bits_map之中，每个变量都是一个unsigned long 类型的 64位整数
 			// 每一位可以表示该位所对应的page是否使用
@@ -261,19 +301,17 @@ void InitMemory(){
 	// ==========对第一段内存进行初始化（第一段比较特殊，包含多个物理内存段所以要特殊处理）==========
 	// 将pages_struct的初始地址指向
 	memory_management_struct.pages_struct->zone_struct = memory_management_struct.zones_struct;
-
 	memory_management_struct.pages_struct->PHY_address = 0UL;
-	memory_management_struct.pages_struct->attribute = 0;
-	memory_management_struct.pages_struct->reference_count = 0;
+	set_page_attribute(memory_management_struct.pages_struct,PG_PTable_Maped | PG_Kernel_Init | PG_Kernel);
+	memory_management_struct.pages_struct->reference_count = 1;
 	memory_management_struct.pages_struct->age = 0;
-
 	memory_management_struct.zones_length = (memory_management_struct.zones_size * sizeof(struct Zone) + sizeof(long) - 1) & ( ~ (sizeof(long) - 1));
-
 
 	// ==========其他的设置==========
 	// 两个不同类型的地址区间，现在付的值暂时没有意义
 	ZONE_DMA_INDEX = 0;
 	ZONE_NORMAL_INDEX = 0;
+	ZONE_UNMAPED_INDEX = 0;
 
 	for(int i = 0;i < memory_management_struct.zones_size;i++) {
 		struct Zone * z = memory_management_struct.zones_struct + i;
@@ -281,7 +319,7 @@ void InitMemory(){
 		zone_length:%#018lx,pages_group:%#018lx,pages_length:%#018lx\n", \
 		z->zone_start_address,z->zone_end_address,z->zone_length,z->pages_group,z->pages_length);
 		// 如果起始地址符合条件，那么就将其设置为非映射区间
-		if (z->zone_start_address == 0x100000000)
+		if (z->zone_start_address == 0x100000000 && !ZONE_UNMAPED_INDEX)
 			ZONE_UNMAPED_INDEX = i;
 	}
 	
@@ -297,8 +335,13 @@ void InitMemory(){
 	int curPageId = CONVERT_VIRTUAL_ADDRESS_TO_PHYSICAL_ADDRESS(memory_management_struct.end_of_struct) >> PAGE_2M_SHIFT;
 	
 	// 对前面的页进行初始化
-	for(int pageId = 0;pageId <= curPageId;pageId++) 
-		PageInit(memory_management_struct.pages_struct + pageId,PG_PTable_Maped | PG_Kernel_Init | PG_Active | PG_Kernel);
+	for(int pageId = 0;pageId <= curPageId;pageId++) {
+		struct Page * tmp_page =  memory_management_struct.pages_struct + pageId;
+		PageInit(tmp_page,PG_PTable_Maped | PG_Kernel_Init | PG_Active | PG_Kernel);
+		*(memory_management_struct.bits_map + ((tmp_page->PHY_address >> PAGE_2M_SHIFT) >> 6)) |= 1UL << (tmp_page->PHY_address >> PAGE_2M_SHIFT) % 64;
+		tmp_page->zone_struct->page_using_count++;
+		tmp_page->zone_struct->page_free_count--;
+	}
 	
 
 	Global_CR3 = GetGDT();
@@ -306,6 +349,9 @@ void InitMemory(){
 	printk("Global_CR3\t:%#018lx\n",Global_CR3);
 	printk("*Global_CR3\t:%#018lx\n",*CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(Global_CR3) & (~0xff));
 	printk("**Global_CR3\t:%#018lx\n",*CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(*CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS (Global_CR3) & (~0xff)) & (~0xff));
+
+	for(int i = 0; i < 10; ++i)
+		*(CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(Global_CR3)  + i) = 0UL;
 
 	FLUSH_TLB();
 }
@@ -318,46 +364,50 @@ void InitMemory(){
  */
 struct Page* AllocPages(int zone_select,int number, unsigned long page_flags){
 	int begin_zone, end_zone;
+	unsigned long attribute;
+	
+
+	// 请求的页的数量不同
+	if (number >= 64 || number <= 0) {
+		printk("alloc_pages() ERROR: number is invalid\n");
+		return NULL;
+	}
 
 	// 根据zone_select选择开始的zone
 	switch (zone_select){
-	case ZONE_DMA:
-		begin_zone = 0;
-		end_zone = ZONE_DMA_INDEX;
-		break;
-	case ZONE_NORMAL:
-		begin_zone = ZONE_DMA_INDEX;
-		end_zone = ZONE_NORMAL_INDEX;
-		break;
-	case ZONE_UNMAPED:
-		begin_zone = ZONE_UNMAPED_INDEX;
-		end_zone = memory_management_struct.zones_size - 1;
-		break;
-	
-	default:
-		printk("Malloc ERROR ! NO SUCH KIND OF MEMORY!");
-		return NULL;
-		break;
+		case ZONE_DMA:
+			begin_zone = 0;
+			end_zone = ZONE_DMA_INDEX;
+			attribute = PG_PTable_Maped;
+			break;
+		case ZONE_NORMAL:
+			begin_zone = ZONE_DMA_INDEX;
+			end_zone = ZONE_NORMAL_INDEX;
+			attribute = PG_PTable_Maped;
+			break;
+		case ZONE_UNMAPED:
+			begin_zone = ZONE_UNMAPED_INDEX;
+			end_zone = memory_management_struct.zones_size - 1;
+			attribute = 0;
+			break;
+		default:
+			printk("Malloc ERROR ! NO SUCH KIND OF MEMORY!");
+			return NULL;
+			break;
 	}
 
 	// 遍历每一个zone进行检索
 	for(int cur_zone_id = begin_zone; cur_zone_id <= end_zone; cur_zone_id ++){
-		
 		struct Zone* cur_zone = memory_management_struct.zones_struct + cur_zone_id; // 获取当前zone
-
 		// 如果当前的Zone中，没有足够的页，那么就找下一个
 		if (cur_zone->page_free_count < number) continue;
-
 		unsigned long start = (cur_zone->zone_start_address >> PAGE_2M_SHIFT); // 开始的页号
 		unsigned long end = (cur_zone->zone_end_address >> PAGE_2M_SHIFT); // 结束的页号 
-
 		unsigned long cur_jump_width = 64 - (start % 64); // 当前想要走到64位对齐的下一个位置需要走多远
-
 		// 顺序检查
 		for(int cur_page_id = start; cur_page_id < end; cur_page_id += (cur_page_id % 64 == 0) ? 64 : cur_jump_width ){
 			unsigned long *cur_bits_map = memory_management_struct.bits_map + (cur_page_id >> 6); // 将指针指向当前page所在的bitsmap元素
 			unsigned long shift_index = (cur_page_id % 64);// 确定当前bitsmap元素的哪一位描述当前页
-			
 			for(int check_page_id = shift_index; check_page_id < 64 - shift_index; check_page_id ++){
 				if ( !(((*cur_bits_map >> check_page_id) |(*(cur_bits_map + 1) << (64 - check_page_id))) &
 				(number == 64 ? 0xffffffffffffffffUL : ((1UL << number) - 1))) ){
@@ -368,6 +418,10 @@ struct Page* AllocPages(int zone_select,int number, unsigned long page_flags){
                     for(int init_page_id = 0; init_page_id < number; init_page_id ++){
                         struct Page* init_page_ptr = memory_management_struct.pages_struct + st_page + init_page_id;
                         PageInit(init_page_ptr,page_flags);
+						*(memory_management_struct.bits_map + ((init_page_ptr->PHY_address >> PAGE_2M_SHIFT) >> 6)) |= 1UL << (init_page_ptr->PHY_address >> PAGE_2M_SHIFT) % 64;
+						cur_zone->page_using_count++;
+						cur_zone->page_free_count--;
+						init_page_ptr->attribute = attribute;
                     }
 					// 找到了就返回页
 					return (struct Page *)(memory_management_struct.pages_struct + st_page);
@@ -377,4 +431,91 @@ struct Page* AllocPages(int zone_select,int number, unsigned long page_flags){
 	}
 	// 没找到就返回空 
 	return NULL;
+}
+
+/**
+ * 初始化页表
+ */
+void PageTableInit(){
+
+	Global_CR3 = GetGDT();
+	unsigned long* temp;
+
+	// 输出页表的信息
+	temp = (unsigned long *)(((unsigned long)CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS((unsigned long)Global_CR3 & (~ 0xfffUL))) + 8 * 256);
+	printk("1 : %#018lx, %#018lx \n", (unsigned long)temp, *temp);
+	temp = CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(*temp);
+	printk("2 : %#018lx, %#018lx \n", (unsigned long)temp, *temp);
+	temp = CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(*temp);
+	printk("3 : %#018lx, %#018lx \n", (unsigned long)temp, *temp);
+
+	// 遍历每一个页，对其进行映射
+	for(int i = 0; i < memory_management_struct.zones_size; ++i){
+		printk("in loop\n");
+		struct Zone* cur_zone = memory_management_struct.zones_struct + i;
+		struct Page* cur_page = cur_zone->pages_group;
+
+		if(ZONE_UNMAPED_INDEX && i == ZONE_UNMAPED_INDEX)
+			break;
+		
+		for(int j = 0; j < cur_zone->pages_length; ++j, ++cur_page){
+			temp = (unsigned long *)(((unsigned long)CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS((unsigned long)Global_CR3 & (~ 0xfffUL))) + (((unsigned long)CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(cur_page->PHY_address) >> PAGE_GDT_SHIFT) & 0x1ff) * 8);
+			
+			if(*temp == 0)
+			{			
+				unsigned long * virtual = kmalloc(PAGE_4K_SIZE,0);
+				set_mpl4t(temp,mk_mpl4t(CONVERT_VIRTUAL_ADDRESS_TO_PHYSICAL_ADDRESS(virtual),PAGE_KERNEL_GDT));
+			}
+
+			temp = (unsigned long *)((unsigned long)CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(*temp & (~ 0xfffUL)) + (((unsigned long)CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(cur_page->PHY_address) >> PAGE_1G_SHIFT) & 0x1ff) * 8);
+			
+			if(*temp == 0)
+			{
+				unsigned long * virtual = kmalloc(PAGE_4K_SIZE,0);
+				set_pdpt(temp,mk_pdpt(CONVERT_VIRTUAL_ADDRESS_TO_PHYSICAL_ADDRESS(virtual),PAGE_KERNEL_Dir));
+			}
+
+			temp = (unsigned long *)((unsigned long)CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(*temp & (~ 0xfffUL)) + (((unsigned long)CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(cur_page->PHY_address) >> PAGE_2M_SHIFT) & 0x1ff) * 8);
+
+			set_pdt(temp,mk_pdt(cur_page->PHY_address,PAGE_KERNEL_Page));
+
+			if(j % 50 == 0)
+				color_printk(GREEN,BLACK,"@:%#018lx,%#018lx\t\n",(unsigned long)temp,*temp);
+		}
+	}
+	FLUSH_TLB();
+}
+
+/**
+ * 显示区域初始化
+ */
+void FrameBufferInit() {
+    unsigned long * tmp;
+    unsigned long * tmp1;
+    unsigned int * FB_addr = (unsigned int *)CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(0xe0000000);
+
+    Global_CR3 = GetGDT();
+
+    tmp = CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS((unsigned long *)((unsigned long)Global_CR3 & (~ 0xfffUL)) + (((unsigned long)FB_addr >> PAGE_GDT_SHIFT) & 0x1ff));
+    if (*tmp == 0) {
+        unsigned long * virtual = kmalloc(PAGE_4K_SIZE,0);
+        set_mpl4t(tmp,mk_mpl4t(CONVERT_VIRTUAL_ADDRESS_TO_PHYSICAL_ADDRESS(virtual),PAGE_KERNEL_GDT));
+		
+    }
+
+    tmp = CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS((unsigned long *)(*tmp & (~ 0xfffUL)) + (((unsigned long)FB_addr >> PAGE_1G_SHIFT) & 0x1ff));
+    if (*tmp == 0) {
+        unsigned long * virtual = kmalloc(PAGE_4K_SIZE,0);
+        set_pdpt(tmp,mk_pdpt(CONVERT_VIRTUAL_ADDRESS_TO_PHYSICAL_ADDRESS(virtual),PAGE_KERNEL_Dir));
+    }
+
+    for(int i = 0;i < global_position.screen_buffer_length;i += PAGE_2M_SIZE) {
+        tmp1 = CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS((unsigned long *)(*tmp & (~ 0xfffUL)) + (((unsigned long)((unsigned long)FB_addr + i) >> PAGE_2M_SHIFT) & 0x1ff));
+        unsigned long phy = 0xe0000000 + i;
+        set_pdt(tmp1,mk_pdt(phy,PAGE_KERNEL_Page | PAGE_PWT | PAGE_PCD));
+    }
+	
+    global_position.screen_buffer_base_address = (unsigned int *)CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(0xe0000000);
+
+    FLUSH_TLB();
 }

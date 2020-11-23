@@ -198,36 +198,58 @@ ENTRY(_stack_start)
 
 __PML4E:
 
-	.quad	0x102007
+	.quad	0x102003
 	.fill	255,8,0
-	.quad	0x102007
+	.quad	0x102003
 	.fill	255,8,0
 
 .org	0x2000
 
 __PDPTE:
 	
-	.quad	0x103007	/* 0x103003 */
+	.quad	0x103003	/* 0x103003 */
 	.fill	511,8,0
 
 .org	0x3000
 
 __PDE:
 
-	.quad	0x000087	
-	.quad	0x200087
-	.quad	0x400087
-	.quad	0x600087
-	.quad	0x800087		/* 0x800083 */
-	.quad	0xe0000087		/*0x a00000*/
-	.quad	0xe0200087
-	.quad	0xe0400087
-	.quad	0xe0600087		/*0x1000000*/
-	.quad	0xe0800087
-	.quad	0xe0a00087
-	.quad	0xe0c00087
-	.quad	0xe0e00087
-	.fill	499,8,0
+	.quad	0x000083	
+	.quad	0x200083
+	.quad	0x400083
+	.quad	0x600083
+	.quad	0x800083		/* 0x800083 */
+	.quad	0xa00083
+	.quad	0xc00083
+	.quad	0xe00083
+	.quad	0x1000083
+	.quad	0x1200083
+	.quad	0x1400083
+	.quad	0x1600083
+	.quad	0x1800083
+	.quad	0x1a00083
+	.quad	0x1c00083
+	.quad	0x1e00083
+	.quad	0x2000083
+	.quad	0x2200083
+	.quad	0x2400083
+	.quad	0x2600083
+	.quad	0x2800083
+	.quad	0x2a00083
+	.quad	0x2c00083
+	.quad	0x2e00083
+
+
+
+	.quad	0xe0000083		/*0x 3000000*/
+	.quad	0xe0200083
+	.quad	0xe0400083
+	.quad	0xe0600083
+	.quad	0xe0800083
+	.quad	0xe0a00083
+	.quad	0xe0c00083
+	.quad	0xe0e00083
+	.fill	480,8,0
 
 //=======	gdt_table
 

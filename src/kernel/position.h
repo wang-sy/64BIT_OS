@@ -1,5 +1,5 @@
-#ifndef _64BITOS_SRC_KERNEL_POSITION_H_
-#define _64BITOS_SRC_KERNEL_POSITION_H_
+#ifndef _64BITOS_SRC_KERNEL_POSITION_H
+#define _64BITOS_SRC_KERNEL_POSITION_H
 
 /* =========================================================================
  =                                结构体定义                                 =

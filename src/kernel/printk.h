@@ -1,5 +1,5 @@
-#ifndef _64BITOS_SRC_KERNEL_PRINTK_H__
-#define _64BITOS_SRC_KERNEL_PRINTK_H__
+#ifndef _64BITOS_SRC_KERNEL_PRINTK_H
+#define _64BITOS_SRC_KERNEL_PRINTK_H
 
 #include <stdarg.h>
 

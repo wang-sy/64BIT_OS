@@ -13,12 +13,26 @@
 *
 ***************************************************/
 
-#ifndef __LIB_H__
-#define __LIB_H__
+#ifndef _64BITOS_SRC_KERNEL_LIB_H
+#define _64BITOS_SRC_KERNEL_LIB_H
 
 
 #define NULL 0
 
+/**
+ * 通过结构体的成员来获取该结构体的首地址
+ * @param ptr		结构体的成员的地址
+ * @param type		结构体的类型
+ * @param member	结构体的成员的名称
+ * 
+ * <h3>相关原理</h3>
+ * <p>
+ * 		<ul>
+ * 			<li>使用：(unsigned long)&(((type *)0)->member计算出member相对于整个结构体的偏移量</li>
+ * 			<li>使用当前成员的实际地址减掉当前成员的偏移量，得到当前结构体的首地址</li>
+ * 		</ul>
+ * </p>
+ */
 #define CONTAINER_OF(ptr,type,member)							\
 ({											\
 	typeof(((type *)0)->member) * p = (ptr);					\

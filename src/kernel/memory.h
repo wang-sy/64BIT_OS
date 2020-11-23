@@ -1,5 +1,5 @@
-#ifndef _64BITOS_SRC_KERNEL_MEMORY_H__
-#define _64BITOS_SRC_KERNEL_MEMORY_H__
+#ifndef _64BITOS_SRC_KERNEL_MEMORY_H
+#define _64BITOS_SRC_KERNEL_MEMORY_H
 
 /* =========================================================================
  =                                 宏的定义                                  =
@@ -11,6 +11,7 @@
 // 内核层起始线性地址
 #define PAGE_OFFSET ((unsigned long)0xffff800000000000)
 
+#define PAGE_GDT_SHIFT	 39
 #define PAGE_1G_SHIFT    30 // 1GB = 1Byte << 30
 #define PAGE_2M_SHIFT    21 // 2MB = 1Byte << 21
 #define PAGE_4K_SHIFT    12 // 4kB = 1Byte << 12
@@ -42,6 +43,9 @@
  */
 #define CONVERT_PHYSICAL_ADDRESS_TO_VIRTUAL_ADDRESS(addr)  ((unsigned long *)((unsigned long)(addr) + PAGE_OFFSET))
 
+
+#define Virt_To_2M_Page(kaddr)	(memory_management_struct.pages_struct + (CONVERT_VIRTUAL_ADDRESS_TO_PHYSICAL_ADDRESS(kaddr) >> PAGE_2M_SHIFT))
+#define Phy_to_2M_Page(kaddr)	(memory_management_struct.pages_struct + ((unsigned long)(kaddr) >> PAGE_2M_SHIFT))
 // 标记页的属性
 
 // 经过页表映射的页
@@ -65,6 +69,57 @@
 
 #define PG_Slab		(1 << 9)
 
+////page table attribute
+
+//	bit 63	Execution Disable:
+#define PAGE_XD		(1UL << 63)
+
+//	bit 12	Page Attribute Table
+#define	PAGE_PAT	(1UL << 12)
+
+//	bit 8	Global Page:1,global;0,part
+#define	PAGE_Global	(1UL << 8)
+
+//	bit 7	Page Size:1,big page;0,small page;
+#define	PAGE_PS		(1UL << 7)
+
+//	bit 6	Dirty:1,dirty;0,clean;
+#define	PAGE_Dirty	(1UL << 6)
+
+//	bit 5	Accessed:1,visited;0,unvisited;
+#define	PAGE_Accessed	(1UL << 5)
+
+//	bit 4	Page Level Cache Disable
+#define PAGE_PCD	(1UL << 4)
+
+//	bit 3	Page Level Write Through
+#define PAGE_PWT	(1UL << 3)
+
+//	bit 2	User Supervisor:1,user and supervisor;0,supervisor;
+#define	PAGE_U_S	(1UL << 2)
+
+//	bit 1	Read Write:1,read and write;0,read;
+#define	PAGE_R_W	(1UL << 1)
+
+//	bit 0	Present:1,present;0,no present;
+#define	PAGE_Present	(1UL << 0)
+
+
+//
+#define PAGE_KERNEL_GDT		(PAGE_R_W | PAGE_Present)
+
+//1,0	
+#define PAGE_KERNEL_Dir		(PAGE_R_W | PAGE_Present)
+
+//7,1,0
+#define	PAGE_KERNEL_Page	(PAGE_PS  | PAGE_R_W | PAGE_Present)
+
+//2,1,0
+#define PAGE_USER_Dir		(PAGE_U_S | PAGE_R_W | PAGE_Present)
+
+//7,2,1,0
+#define	PAGE_USER_Page		(PAGE_PS  | PAGE_U_S | PAGE_R_W | PAGE_Present)
+
 // 标记内存类型
 
 // 内核使用的内存
@@ -77,6 +132,17 @@
 typedef struct {unsigned long pml4t;} pml4t_t;
 #define	mk_mpl4t(addr,attr)	((unsigned long)(addr) | (unsigned long)(attr))
 #define set_mpl4t(mpl4tptr,mpl4tval)	(*(mpl4tptr) = (mpl4tval))
+
+typedef struct {unsigned long pdt;} pdt_t;
+#define mk_pdt(addr,attr)	((unsigned long)(addr) | (unsigned long)(attr))
+#define set_pdt(pdtptr,pdtval)		(*(pdtptr) = (pdtval))
+
+typedef struct {unsigned long pdpt;} pdpt_t;
+#define mk_pdpt(addr,attr)	((unsigned long)(addr) | (unsigned long)(attr))
+#define set_pdpt(pdptptr,pdptval)	(*(pdptptr) = (pdptval))
+
+#define SIZEOF_LONG_ALIGN(size) ((size + sizeof(long) - 1) & ~(sizeof(long) - 1) )
+#define SIZEOF_INT_ALIGN(size) ((size + sizeof(int) - 1) & ~(sizeof(int) - 1) )
 
 /**
  * 刷新TLB， 重新读取
@@ -227,6 +293,12 @@ extern unsigned long * Global_CR3;
  */
 void InitMemory();
 
+/**
+ * 对某个内存页进行初始化， 在申请新的page时，对申请到的page调用本函数进行初始化
+ *  @param page 指针，指向想要被初始化的 page
+ *  @param flag 初始化时的参数
+ */
+unsigned long PageInit(struct Page * page, unsigned long flag);
 
 /**
  * 根据给出的需求，返回一个初始化后的page列表的起始地址
@@ -236,5 +308,11 @@ void InitMemory();
  */
 struct Page* AllocPages(int zone_select,int number,unsigned long page_flags);
 
+void free_pages(struct Page * page,int number);
+
+unsigned long page_clean(struct Page * page);
+
+void FrameBufferInit();
+void PageTableInit();
 
 #endif

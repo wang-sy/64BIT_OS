@@ -5,8 +5,10 @@
 #include "interrupt.h"
 #include "task.h"
 #include "cpu.h"
+#include "slab.h"
+#include "printk.h"
 
-#define COLOR_OUTPUT_ADDR (int *)0xffff800000a00000
+#define COLOR_OUTPUT_ADDR (int *)0xffff800003000000
 #define SCREEN_ROW_LEN 768 // 一共有多少行
 #define SCREEN_COL_LEN 1024 // 一共有多少列
 #define CHAR_ROW_LEN 16 // 一个字符一共有多少行
@@ -84,6 +86,8 @@ void Start_Kernel() {
 
 	SystemInterruptVectorInit(); // 初始化IDT表，确定各种异常的处理函数
 
+    InitCpu();
+
     // 该变量来源于memory.c， 对其中的关键地址信息进行填充
     memory_management_struct.start_code = (unsigned long)& _text;
 	memory_management_struct.end_code   = (unsigned long)& _etext;
@@ -92,11 +96,26 @@ void Start_Kernel() {
 
     InitMemory(); // 输出所有内存信息
 
+    SlabInit();
+
+    printk("frame buffer init\n");
+    FrameBufferInit();
+    printk("frame buffer init over\n");
+
+    printk("page table init\n");
+    PageTableInit();
+    printk("page table init over\n");
+
     InitInterrupt();
 
-    DoClear(&global_position);
+    printk("every thing is ok!\n");
 
-    InitCpu();
+
+    while(1){
+        ;
+    }
+
+    DoClear(&global_position);
 
     TaskInit();
 

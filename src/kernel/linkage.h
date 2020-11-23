@@ -13,8 +13,8 @@
 *
 ***************************************************/
 
-#ifndef _LINKAGE_H_
-#define _LINKAGE_H_
+#ifndef _64BITOS_SRC_KERNEL_LINKAGE_H
+#define _64BITOS_SRC_KERNEL_LINKAGE_H
 
 /*
 
