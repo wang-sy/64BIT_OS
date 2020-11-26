@@ -74,3 +74,11 @@
 ├─ makefile
 └─ README.md
 ```
+
+
+
+## 主要参考
+
+- 《一个64位操作系统的设计与实现》田宇 [链接](https://www.ituring.com.cn/book/2450)
+- Intel® 64 Architecture x2APIC Specification [链接](https://software.intel.com/content/www/us/en/develop/download/intel-64-architecture-x2apic-specification.html?wapkw=APIC)
+- Intel® 64 and IA-32 Architectures Software Developer Manuals [链接](https://software.intel.com/content/www/us/en/develop/articles/intel-sdm.html)
